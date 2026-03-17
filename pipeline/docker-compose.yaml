@@ -1,0 +1,98 @@
+# Premier League Analytics — Apache Airflow (LocalExecutor)
+# Serviços: postgres (metadata DB) + airflow-init + webserver + scheduler
+#
+# Uso:
+#   docker compose build               # build da imagem customizada (1ª vez ou após mudar Dockerfile)
+#   docker compose up airflow-init     # inicializar DB + criar usuário admin (1ª vez)
+#   docker compose up -d               # subir stack completo
+#   docker compose down                # parar
+#   docker compose down -v             # parar + apagar volumes (reset completo)
+
+x-airflow-common: &airflow-common
+  build: .
+  env_file:
+    - ../.env
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: "46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfdstY="
+    AIRFLOW__WEBSERVER__SECRET_KEY: "pl-analytics-secret-key-change-in-prod"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Passa as variáveis do .env raiz para dentro dos containers
+    SUPABASE_URL: "${SUPABASE_URL}"
+    SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+    SUPABASE_SERVICE_KEY: "${SUPABASE_SERVICE_KEY}"
+    PYTHONPATH: "/opt/airflow"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./supabase_client.py:/opt/airflow/supabase_client.py
+    # Monta o módulo scraper para que as DAGs possam importá-lo
+    - ../scraper:/opt/airflow/scraper
+    # Monta o diretório de output para que o container grave os JSONs
+    - ../output:/opt/airflow/output
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username airflow \
+          --firstname Airflow \
+          --lastname Admin \
+          --role Admin \
+          --email admin@example.com \
+          --password airflow
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-db-volume:

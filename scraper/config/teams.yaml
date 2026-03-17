@@ -1,0 +1,124 @@
+# Premier League 2024/25 teams
+# sofascore_id: verified against https://www.sofascore.com/team/football/{slug}/{id}
+# Verify IDs by opening DevTools → Network → filter "events/last" when visiting any team page
+
+teams:
+  - name: Arsenal
+    slug: arsenal
+    sofascore_id: 42
+    primary_color: "#EF0107"
+    secondary_color: "#FFFFFF"
+
+  - name: Aston Villa
+    slug: aston-villa
+    sofascore_id: 40
+    primary_color: "#670E36"
+    secondary_color: "#95BFE5"
+
+  - name: Bournemouth
+    slug: bournemouth
+    sofascore_id: 60
+    primary_color: "#DA291C"
+    secondary_color: "#000000"
+
+  - name: Brentford
+    slug: brentford
+    sofascore_id: 50
+    primary_color: "#E30613"
+    secondary_color: "#FFE500"
+
+  - name: Brighton
+    slug: brighton-hove-albion
+    sofascore_id: 211
+    primary_color: "#0057B8"
+    secondary_color: "#FFCD00"
+
+  - name: Chelsea
+    slug: chelsea
+    sofascore_id: 38
+    primary_color: "#034694"
+    secondary_color: "#FFFFFF"
+
+  - name: Crystal Palace
+    slug: crystal-palace
+    sofascore_id: 7
+    primary_color: "#1B458F"
+    secondary_color: "#C4122E"
+
+  - name: Everton
+    slug: everton
+    sofascore_id: 48
+    primary_color: "#003399"
+    secondary_color: "#FFFFFF"
+
+  - name: Fulham
+    slug: fulham
+    sofascore_id: 43
+    primary_color: "#000000"
+    secondary_color: "#FFFFFF"
+
+  - name: Ipswich Town
+    slug: ipswich-town
+    sofascore_id: 32
+    primary_color: "#3A64A3"
+    secondary_color: "#FFFFFF"
+
+  - name: Leicester City
+    slug: leicester-city
+    sofascore_id: 31
+    primary_color: "#003090"
+    secondary_color: "#FDBE11"
+
+  - name: Liverpool
+    slug: liverpool
+    sofascore_id: 44
+    primary_color: "#C8102E"
+    secondary_color: "#00B2A9"
+
+  - name: Manchester City
+    slug: manchester-city
+    sofascore_id: 17
+    primary_color: "#6CABDD"
+    secondary_color: "#1C2C5B"
+
+  - name: Manchester United
+    slug: manchester-united
+    sofascore_id: 35
+    primary_color: "#DA020E"
+    secondary_color: "#FFE500"
+
+  - name: Newcastle United
+    slug: newcastle-united
+    sofascore_id: 39
+    primary_color: "#241F20"
+    secondary_color: "#FFFFFF"
+
+  - name: Nottingham Forest
+    slug: nottingham-forest
+    sofascore_id: 14
+    primary_color: "#DD0000"
+    secondary_color: "#FFFFFF"
+
+  - name: Southampton
+    slug: southampton
+    sofascore_id: 45
+    primary_color: "#D71920"
+    secondary_color: "#130C0E"
+
+  - name: Tottenham Hotspur
+    slug: tottenham-hotspur
+    sofascore_id: 33
+    primary_color: "#132257"
+    secondary_color: "#FFFFFF"
+
+  - name: West Ham United
+    slug: west-ham-united
+    sofascore_id: 37
+    primary_color: "#7A263A"
+    secondary_color: "#1BB1E7"
+
+  - name: Wolverhampton
+    slug: wolverhampton-wanderers
+    sofascore_id: 3
+    primary_color: "#FDB913"
+    secondary_color: "#231F20"

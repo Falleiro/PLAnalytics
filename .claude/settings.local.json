@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(winget install:*)",
+      "Bash(powershell -Command \"Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression\")",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(uv init:*)",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(~/.cargo/bin/uv sync:*)",
+      "Bash(python -m pip install pyyaml pytest-mock)",
+      "Bash(cmd.exe /c \"where uv\")",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\Caio Falleiro\\\\Códigos\\\\PLAnalytics\"\" && uv sync\")",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\Caio Falleiro\\\\Códigos\\\\PLAnalytics\"\" && uv sync 2>&1\")",
+      "Bash(cmd.exe /c \".venv\\\\Scripts\\\\python.exe -c \"\"import yaml; import pytest_mock; print\\(''OK''\\)\"\"\")",
+      "Bash(.venv/Scripts/python.exe -m pytest scraper/tests/test_models.py scraper/tests/test_scraper.py -m \"not integration\" -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest scraper/tests/ -m \"not integration\" -q)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:tommhe14.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.sofascore.com)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:medium.com)",
+      "WebSearch",
+      "WebFetch(domain:scraperfc.readthedocs.io)",
+      "WebFetch(domain:mmoumni.com)"
+    ]
+  }
+}

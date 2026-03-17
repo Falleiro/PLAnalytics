@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Scraper output & logs
+output/
+logs/
+playwright_resultado.json
+
+# Real API fixture files (captured locally, not committed)
+scraper/tests/fixtures/*.json
+
+# Environment secrets
+.env
+.env.local
+
+# Node / Next.js (future portfolio phase)
+node_modules/
+.next/
+portfolio/.env
+portfolio/.env.local
+
+# Power BI
+*.pbix
+
+# OS
+.DS_Store
+Thumbs.db
