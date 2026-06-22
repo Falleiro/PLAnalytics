@@ -1,9 +1,9 @@
 """
-Premier League Analytics — Playwright scraper.
+World Cup Analytics — Playwright scraper.
 
 Usage:
-    python scraper/scraper.py --team Arsenal
-    python scraper/scraper.py --team Chelsea --last 10
+    python scraper/scraper.py --team Brazil
+    python scraper/scraper.py --team Argentina --last 10
     python scraper/scraper.py --all
     python scraper/scraper.py --all --last 10
 """
@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import os
 import random
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,10 +45,22 @@ OUTPUT_DIR = ROOT_DIR / "output"
 LOGS_DIR = ROOT_DIR / "logs"
 
 API_BASE = "https://api.sofascore.com/api/v1"
+# The website calls its API under the www host; a same-origin page fetch to this
+# base inherits the anti-bot token (a direct request to api.sofascore.com → 403).
+API_PAGE_BASE = "https://www.sofascore.com/api/v1"
 TEAM_PAGE_BASE = "https://www.sofascore.com/team/football"
+MATCH_PAGE_BASE = "https://www.sofascore.com/football/match"
 
-# Premier League unique tournament ID on SofaScore
-PL_TOURNAMENT_IDS = {17}  # add Cup IDs here if you ever want to include them
+# Per-event detail fetching (navigate to match page + intercept the stats call)
+EVENT_DETAIL_WAIT_S = 8  # max seconds to wait for the statistics response
+
+# Tournament filter on SofaScore (uniqueTournament IDs).
+# None = collect matches from ANY tournament (World Cup, qualifiers, friendlies,
+# Copa América, Euro, Nations League, etc.) — the goal is the full recent form of
+# each national team. Set to a set of IDs (e.g. {16}) to restrict to specific
+# tournaments. The competition name is stored per match, so filtering can still be
+# done later when building features.
+TOURNAMENT_IDS: set[int] | None = None
 
 # Rate limiting
 MATCH_DELAY_MIN = 1.0   # seconds between matches (jittered)
@@ -155,20 +168,22 @@ class SofaScoreScraper:
     # Step 1: discover event IDs for a team
     # ------------------------------------------------------------------
 
-    async def get_event_ids(self, team: TeamConfig, last_n: int) -> list[int]:
+    async def get_events(self, team: TeamConfig, last_n: int) -> list[dict[str, Any]]:
         """
-        Navigate to the team page, intercept the team events API call,
-        then paginate with direct API calls until we have `last_n` PL event IDs.
+        Navigate to the team page and intercept the team events API response(s).
+        Returns the raw event objects for the most recent `last_n` finished
+        matches (optionally filtered by TOURNAMENT_IDS), newest first.
+
+        SofaScore blocks direct API calls (403 "challenge"), so we rely on
+        intercepting the responses the page makes itself.
         """
-        event_ids: list[int] = []
         captured_pages: dict[int, dict] = {}
 
         async def handle_response(response):
-            for page_num in range(3):  # intercept pages 0-2
+            for page_num in range(3):  # intercept pages 0-2 if the page loads them
                 if f"/team/{team.sofascore_id}/events/last/{page_num}" in response.url:
                     try:
-                        data = await response.json()
-                        captured_pages[page_num] = data
+                        captured_pages[page_num] = await response.json()
                         logger.debug(f"Intercepted team events page {page_num}")
                     except Exception:
                         pass
@@ -179,67 +194,172 @@ class SofaScoreScraper:
         logger.info(f"[{team.name}] Navigating to team page → {team_url}")
         await self.page.goto(team_url, wait_until="domcontentloaded", timeout=60_000)
 
-        # Wait up to 10s for the first page to be captured
+        # Wait up to 10s for page 0 to be captured
         for _ in range(20):
             if 0 in captured_pages:
                 break
             await self.page.wait_for_timeout(500)
 
-        if 0 not in captured_pages:
-            logger.warning(
-                f"[{team.name}] Interception failed (headless mode?) — falling back to direct API call"
-            )
-            try:
-                url = f"{API_BASE}/team/{team.sofascore_id}/events/last/0"
-                captured_pages[0] = await self._api_call(url)
-            except Exception as e:
-                logger.error(f"[{team.name}] Direct API call also failed: {e}")
-                return []
-
-        # Collect IDs from page 0 (already captured), then fetch pages 1, 2 via API
-        for page_num in range(3):
-            if len(event_ids) >= last_n:
-                break
-            if page_num == 0:
-                data = captured_pages[0]
-            else:
-                url = f"{API_BASE}/team/{team.sofascore_id}/events/last/{page_num}"
-                logger.debug(f"[{team.name}] Fetching event page {page_num}")
-                try:
-                    data = await self._api_call(url)
-                    await asyncio.sleep(random.uniform(0.5, 1.0))
-                except Exception as e:
-                    logger.warning(f"[{team.name}] Could not fetch page {page_num}: {e}")
-                    break
-
-            for event in data.get("events", []):
-                if len(event_ids) >= last_n:
-                    break
-                # Filter to Premier League only
-                tid = (
-                    event.get("tournament", {})
-                    .get("uniqueTournament", {})
-                    .get("id")
-                )
-                if tid not in PL_TOURNAMENT_IDS:
-                    continue
-                # Skip matches that haven't finished yet
-                status = event.get("status", {}).get("type", "")
-                if status not in ("finished",):
-                    continue
-                event_ids.append(event["id"])
-
         self.page.remove_listener("response", handle_response)
-        logger.info(f"[{team.name}] Found {len(event_ids)} finished PL events")
-        return event_ids
+
+        if 0 not in captured_pages:
+            logger.error(
+                f"[{team.name}] Could not capture team events. SofaScore blocks "
+                f"headless mode — run with PLAYWRIGHT_HEADLESS=false."
+            )
+            return []
+
+        # Collect finished events from all captured pages
+        events: list[dict[str, Any]] = []
+        for page_num in sorted(captured_pages):
+            for event in captured_pages[page_num].get("events", []):
+                if TOURNAMENT_IDS is not None:
+                    tid = (
+                        event.get("tournament", {})
+                        .get("uniqueTournament", {})
+                        .get("id")
+                    )
+                    if tid not in TOURNAMENT_IDS:
+                        continue
+                if event.get("status", {}).get("type") != "finished":
+                    continue
+                events.append(event)
+
+        # Most recent first, capped at last_n
+        events.sort(key=lambda e: e.get("startTimestamp", 0), reverse=True)
+        events = events[:last_n]
+        logger.info(f"[{team.name}] Found {len(events)} finished events")
+        return events
 
     # ------------------------------------------------------------------
-    # Step 2: scrape one team
+    # Step 2: fetch detail of one event (via match-page interception)
     # ------------------------------------------------------------------
 
-    async def scrape_team(self, team: TeamConfig, last_n: int = 30) -> TeamScrapeResult:
-        event_ids = await self.get_event_ids(team, last_n)
-        if not event_ids:
+    @staticmethod
+    def _match_url(event: dict[str, Any]) -> str | None:
+        """Build the SofaScore match-page URL for an event."""
+        eid = event.get("id")
+        custom_id = event.get("customId")
+        home_slug = event.get("homeTeam", {}).get("slug", "")
+        away_slug = event.get("awayTeam", {}).get("slug", "")
+        if not eid or not custom_id:
+            return None
+        return f"{MATCH_PAGE_BASE}/{home_slug}-{away_slug}/{custom_id}#id:{eid}"
+
+    async def _page_fetch_json(self, paths: dict[str, str]) -> dict[str, Any]:
+        """
+        Fetch JSON endpoints from inside the page's JS context. A same-origin
+        fetch on www.sofascore.com inherits the anti-bot token, so /event,
+        /lineups and /incidents return 200 (unlike a direct request → 403).
+        """
+        js = """async (paths) => {
+            const out = {};
+            for (const [k, u] of Object.entries(paths)) {
+                try { const r = await fetch(u); if (r.ok) out[k] = await r.json(); }
+                catch (e) { /* ignore */ }
+            }
+            return out;
+        }"""
+        try:
+            return await self.page.evaluate(js, paths)
+        except Exception as e:
+            logger.warning(f"page.evaluate fetch failed: {e}")
+            return {}
+
+    async def _click_statistics_tab(self) -> None:
+        """Force the lazy-loaded Statistics tab to fetch /statistics."""
+        for sel in ('a:has-text("Statistics")', 'button:has-text("Statistics")'):
+            try:
+                el = self.page.locator(sel).first
+                if await el.count() and await el.is_visible():
+                    await el.click(timeout=3000)
+                    return
+            except Exception:
+                pass
+
+    async def _fetch_event_details(self, event: dict[str, Any]) -> dict[str, Any] | None:
+        """
+        Fetch all detail for one event from its match page.
+
+        - event / lineups / incidents: fetched directly from the page context.
+        - statistics: a direct fetch returns 403, so we intercept the call the
+          page makes when the Statistics tab loads (clicking it to force it).
+
+        Returns event_raw / stats_raw / incidents_raw / lineups_raw, or None if
+        the base /event payload could not be retrieved.
+        """
+        eid = event["id"]
+        match_url = self._match_url(event)
+        if match_url is None:
+            logger.warning(f"Event {eid}: missing customId/slug — cannot build match URL")
+            return None
+
+        # Intercept the page's own statistics response (direct fetch is 403)
+        stats_holder: dict[str, Any] = {}
+        pat_stats = re.compile(rf"/api/v1/event/{eid}/statistics")
+
+        async def on_stats(response):
+            if (
+                response.status == 200
+                and "data" not in stats_holder
+                and pat_stats.search(response.url)
+            ):
+                try:
+                    stats_holder["data"] = await response.json()
+                except Exception:
+                    pass
+
+        self.page.on("response", on_stats)
+        try:
+            await self.page.goto(match_url, wait_until="domcontentloaded", timeout=60_000)
+            await self.page.wait_for_timeout(600)
+
+            # Force the Statistics tab if it hasn't auto-loaded, then wait for it
+            if "data" not in stats_holder:
+                await self._click_statistics_tab()
+            for _ in range(EVENT_DETAIL_WAIT_S * 2):
+                if "data" in stats_holder:
+                    break
+                await self.page.wait_for_timeout(500)
+
+            # The remaining endpoints are reliable via a same-origin page fetch
+            fetched = await self._page_fetch_json({
+                "event": f"{API_PAGE_BASE}/event/{eid}",
+                "lineups": f"{API_PAGE_BASE}/event/{eid}/lineups",
+                "incidents": f"{API_PAGE_BASE}/event/{eid}/incidents",
+            })
+        finally:
+            self.page.remove_listener("response", on_stats)
+
+        if not fetched.get("event"):
+            return None
+        return {
+            "event_raw": fetched.get("event"),
+            "stats_raw": stats_holder.get("data"),
+            "incidents_raw": fetched.get("incidents"),
+            "lineups_raw": fetched.get("lineups"),
+        }
+
+    # ------------------------------------------------------------------
+    # Step 3: scrape one team
+    # ------------------------------------------------------------------
+
+    async def scrape_team(
+        self,
+        team: TeamConfig,
+        last_n: int = 30,
+        seen_event_ids: set[int] | None = None,
+    ) -> TeamScrapeResult:
+        """
+        Scrape a team's recent matches.
+
+        If `seen_event_ids` is given, events whose id is already in the set are
+        skipped (and newly processed ids are added). This deduplicates matches
+        between two tracked teams (e.g. a Brazil×Argentina game appears in both
+        teams' event lists but is fetched only once) when scraping in bulk.
+        """
+        events = await self.get_events(team, last_n)
+        if not events:
             logger.warning(f"[{team.name}] No events found — returning empty result")
             return TeamScrapeResult(
                 team=team,
@@ -248,32 +368,38 @@ class SofaScoreScraper:
             )
 
         matches: list[Match] = []
-        for i, eid in enumerate(event_ids, start=1):
-            logger.info(f"[{team.name}] [{i}/{len(event_ids)}] Event {eid}")
-            try:
-                event_raw = await self._api_call(f"{API_BASE}/event/{eid}")
-                stats_raw = await self._api_call(f"{API_BASE}/event/{eid}/statistics")
-                incidents_raw = await self._api_call(f"{API_BASE}/event/{eid}/incidents")
-                lineups_raw = await self._api_call(f"{API_BASE}/event/{eid}/lineups")
+        skipped = 0
+        for i, event in enumerate(events, start=1):
+            eid = event["id"]
 
-                match = Match.model_validate({
-                    "team_name": team.name,
-                    "event_raw": event_raw,
-                    "stats_raw": stats_raw,
-                    "incidents_raw": incidents_raw,
-                    "lineups_raw": lineups_raw,
-                })
-                matches.append(match)
-                logger.debug(
-                    f"[{team.name}] {match.home_team} {match.score_home}–{match.score_away} "
-                    f"{match.away_team} ({match.result})"
-                )
+            # Global dedup: claim the id before any await so concurrent workers
+            # never fetch the same match twice.
+            if seen_event_ids is not None:
+                if eid in seen_event_ids:
+                    skipped += 1
+                    continue
+                seen_event_ids.add(eid)
+
+            logger.info(f"[{team.name}] [{i}/{len(events)}] Event {eid}")
+            try:
+                raw = await self._fetch_event_details(event)
+                if raw is None:
+                    logger.warning(f"[{team.name}] Event {eid}: details not captured — skipping")
+                else:
+                    match = Match.model_validate({"team_name": team.name, **raw})
+                    matches.append(match)
+                    logger.debug(
+                        f"[{team.name}] {match.home_team} {match.score_home}–{match.score_away} "
+                        f"{match.away_team} ({match.result})"
+                    )
             except Exception as e:
                 logger.error(f"[{team.name}] Event {eid} failed: {e}")
 
             # Rate limit between matches
             await asyncio.sleep(random.uniform(MATCH_DELAY_MIN, MATCH_DELAY_MAX))
 
+        dedup_note = f" ({skipped} já vistos pulados)" if skipped else ""
+        logger.info(f"[{team.name}] Scraped {len(matches)}/{len(events)} matches{dedup_note}")
         return TeamScrapeResult(
             team=team,
             scraped_at=datetime.now(tz=timezone.utc),
@@ -339,12 +465,12 @@ async def run_all(teams: list[TeamConfig], last_n: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Premier League Analytics — SofaScore scraper",
+        description="World Cup Analytics — SofaScore scraper",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--team", type=str, metavar="NAME", help="Team name, e.g. Arsenal")
-    group.add_argument("--all", action="store_true", help="Scrape all 20 PL teams")
+    group.add_argument("--team", type=str, metavar="NAME", help="National team name, e.g. Brazil")
+    group.add_argument("--all", action="store_true", help="Scrape all teams in teams.yaml")
     parser.add_argument(
         "--last", type=int, default=30, metavar="N",
         help="Number of matches to collect per team (default: 30)",

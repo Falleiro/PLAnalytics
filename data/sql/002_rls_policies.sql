@@ -1,5 +1,5 @@
 -- =============================================================================
--- Premier League Analytics — Row Level Security (RLS) e Políticas
+-- World Cup Analytics — Row Level Security (RLS) e Políticas
 -- Executar APÓS 001_schema.sql
 -- =============================================================================
 
@@ -14,8 +14,8 @@ alter table public.pipeline_runs  enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- Política de leitura pública (SELECT) para usuários anônimos
--- O Next.js usa a ANON_KEY para buscar dados no frontend — estas políticas
--- permitem que qualquer usuário leia as tabelas sem autenticação.
+-- Permite que qualquer usuário leia as tabelas sem autenticação (ex.: leitura
+-- via ANON_KEY em notebooks/análises).
 -- ---------------------------------------------------------------------------
 create policy "public read teams"
   on public.teams for select
@@ -35,8 +35,7 @@ create policy "public read pipeline_runs"
 
 -- ---------------------------------------------------------------------------
 -- Notas:
--- - INSERT/UPDATE/DELETE são feitos exclusivamente via SERVICE_KEY (Airflow)
---   que bypassa o RLS por padrão — não é necessária política de escrita.
--- - Para ambiente de produção, considere restringir pipeline_runs à leitura
---   apenas dos campos não sensíveis (details pode conter erros internos).
+-- - INSERT/UPDATE/DELETE são feitos exclusivamente via SERVICE_KEY (scripts de
+--   carga manual), que bypassa o RLS por padrão — não é necessária política de
+--   escrita.
 -- ---------------------------------------------------------------------------

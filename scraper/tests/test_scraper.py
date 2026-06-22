@@ -34,9 +34,9 @@ TEAMS_YAML = Path(__file__).parent.parent / "config" / "teams.yaml"
 # ---------------------------------------------------------------------------
 
 class TestLoadTeams:
-    def test_loads_20_teams(self):
+    def test_loads_48_teams(self):
         teams = load_teams(TEAMS_YAML)
-        assert len(teams) == 20
+        assert len(teams) == 48
 
     def test_all_teams_have_required_fields(self):
         teams = load_teams(TEAMS_YAML)
@@ -60,18 +60,18 @@ class TestLoadTeams:
 class TestFindTeam:
     def test_find_by_name(self):
         teams = load_teams(TEAMS_YAML)
-        team = find_team("Arsenal", teams)
-        assert team.name == "Arsenal"
+        team = find_team("Brazil", teams)
+        assert team.name == "Brazil"
 
     def test_find_case_insensitive(self):
         teams = load_teams(TEAMS_YAML)
-        team = find_team("arsenal", teams)
-        assert team.name == "Arsenal"
+        team = find_team("brazil", teams)
+        assert team.name == "Brazil"
 
     def test_find_by_slug(self):
         teams = load_teams(TEAMS_YAML)
-        team = find_team("manchester-city", teams)
-        assert team.name == "Manchester City"
+        team = find_team("south-korea", teams)
+        assert team.name == "South Korea"
 
     def test_raises_on_unknown_team(self):
         teams = load_teams(TEAMS_YAML)
@@ -119,86 +119,43 @@ class TestSaveOutput:
 class TestSofaScraperMocked:
     """Test SofaScoreScraper methods using a mocked Playwright Page."""
 
-    def _make_mock_page(self, team_events_data: dict, event_data: dict,
-                        stats_data: dict, incidents_data: dict, lineups_data: dict):
-        """Build a mock Page that returns predetermined API responses."""
-        page = MagicMock()
-
-        # page.on() should register but not do anything by default
-        page.on = MagicMock()
-        page.remove_listener = MagicMock()
-
-        # page.goto() is async
-        page.goto = AsyncMock(return_value=None)
-        page.wait_for_timeout = AsyncMock(return_value=None)
-
-        # page.request.get() returns a mock response
-        async def mock_api_call(url: str):
-            resp = MagicMock()
-            resp.status = 200
-            if "/events/last/" in url:
-                resp.json = AsyncMock(return_value=team_events_data)
-            elif url.endswith("/statistics"):
-                resp.json = AsyncMock(return_value=stats_data)
-            elif url.endswith("/incidents"):
-                resp.json = AsyncMock(return_value=incidents_data)
-            elif url.endswith("/lineups"):
-                resp.json = AsyncMock(return_value=lineups_data)
-            else:
-                resp.json = AsyncMock(return_value=event_data)
-            return resp
-
-        page.request = MagicMock()
-        page.request.get = mock_api_call
-        return page
-
     @pytest.mark.asyncio
     async def test_scrape_team_returns_valid_result(self):
+        """scrape_team should turn intercepted event details into a Match."""
         from scraper.tests.test_models import (
             _make_event_raw, _make_stats_raw,
             _make_incidents_raw, _make_lineups_raw,
         )
         from scraper.scraper import SofaScoreScraper
 
-        team = TeamConfig(name="Arsenal", slug="arsenal", sofascore_id=42)
+        team = TeamConfig(name="Brazil", slug="brazil", sofascore_id=4748)
 
-        # Mock team events page 0 with one PL event
         event_id = 9999
-        team_events_data = {
-            "events": [
-                {
-                    "id": event_id,
-                    "tournament": {
-                        "uniqueTournament": {"id": 17},
-                        "slug": "premier-league",
-                    },
-                    "status": {"type": "finished"},
-                }
-            ]
+        event_stub = {
+            "id": event_id,
+            "customId": "abc",
+            "homeTeam": {"slug": "brazil"},
+            "awayTeam": {"slug": "argentina"},
+            "status": {"type": "finished"},
         }
-        event_data = _make_event_raw(event_id=event_id)
-        stats_data = _make_stats_raw()
-        incidents_data = _make_incidents_raw()
-        lineups_data = _make_lineups_raw()
+        details = {
+            "event_raw": _make_event_raw(event_id=event_id),
+            "stats_raw": _make_stats_raw(),
+            "incidents_raw": _make_incidents_raw(),
+            "lineups_raw": _make_lineups_raw(),
+        }
 
-        page = self._make_mock_page(
-            team_events_data, event_data, stats_data, incidents_data, lineups_data
-        )
-
-        # Simulate the response listener being triggered (page 0 captured)
-        captured = {}
-
-        def mock_on(event_name, handler):
-            if event_name == "response":
-                # Simulate immediate invocation with a fake response
-                pass
-
-        page.on = mock_on
+        page = MagicMock()
+        page.on = MagicMock()
+        page.remove_listener = MagicMock()
+        page.goto = AsyncMock(return_value=None)
+        page.wait_for_timeout = AsyncMock(return_value=None)
 
         scraper = SofaScoreScraper(page)
 
-        # Manually inject the captured events so get_event_ids returns our event
-        with patch.object(scraper, "get_event_ids", AsyncMock(return_value=[event_id])):
+        # get_events discovers the event; _fetch_event_details returns its detail
+        with patch.object(scraper, "get_events", AsyncMock(return_value=[event_stub])), \
+             patch.object(scraper, "_fetch_event_details", AsyncMock(return_value=details)):
             result = await scraper.scrape_team(team, last_n=1)
 
         assert isinstance(result, TeamScrapeResult)
@@ -241,23 +198,24 @@ class TestSofaScraperMocked:
 @pytest.mark.integration
 class TestLiveScrape:
     @pytest.mark.asyncio
-    async def test_scrape_arsenal_5_matches(self):
+    async def test_scrape_brazil_5_matches(self):
         """
-        End-to-end test: scrapes 5 real Arsenal matches from SofaScore.
-        Requires internet connection and Playwright browser.
+        End-to-end test: scrapes 5 real Brazil matches from SofaScore.
+        Requires internet and the Patchright browser. SofaScore blocks headless
+        mode, so this runs with headless=False.
         """
-        from playwright.async_api import async_playwright
+        from patchright.async_api import async_playwright
         from scraper.scraper import SofaScoreScraper
 
         teams = load_teams(TEAMS_YAML)
-        arsenal = find_team("Arsenal", teams)
+        brazil = find_team("Brazil", teams)
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=False)
             context = await browser.new_context()
             page = await context.new_page()
             scraper = SofaScoreScraper(page)
-            result = await scraper.scrape_team(arsenal, last_n=5)
+            result = await scraper.scrape_team(brazil, last_n=5)
             await browser.close()
 
         assert isinstance(result, TeamScrapeResult)

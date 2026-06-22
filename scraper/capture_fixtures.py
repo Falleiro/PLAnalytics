@@ -7,8 +7,10 @@ against the real JSON shape.
 Usage:
     python scraper/capture_fixtures.py
 
-It will open a browser, navigate to Arsenal's team page, grab ~10 recent event IDs,
+It will open a browser, navigate to the team page below, grab ~10 recent event IDs,
 then capture all 5 endpoints for the first event and save them to fixtures/.
+
+Change TEAM_SLUG / TEAM_ID to the national team you want to sample from.
 """
 
 import asyncio
@@ -16,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-from playwright.async_api import async_playwright
+from patchright.async_api import async_playwright
 
 TEAM_SLUG = "arsenal"
 TEAM_ID = 42

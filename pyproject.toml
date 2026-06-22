@@ -1,14 +1,17 @@
 [project]
-name = "planalytics"
+name = "worldcup-analytics"
 version = "0.1.0"
-description = "Add your description here"
+description = "Previsão de resultados de jogos da Copa do Mundo (scraping SofaScore + ML)"
 requires-python = ">=3.12"
 dependencies = [
     "loguru>=0.7.3",
+    "openpyxl>=3.1.0",
     "pandas>=3.0.1",
-    "playwright>=1.58.0",
+    "patchright>=1.60.1",
     "pydantic>=2.12.5",
+    "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
+    "scikit-learn>=1.5.0",
     "supabase>=2.28.2",
     "tenacity>=9.1.4",
 ]

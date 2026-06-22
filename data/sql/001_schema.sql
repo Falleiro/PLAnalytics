@@ -1,5 +1,5 @@
 -- =============================================================================
--- Premier League Analytics — Schema SQL
+-- World Cup Analytics — Schema SQL
 -- Alinhado aos modelos Pydantic: Match, MatchStats (scraper/models.py)
 --
 -- Como executar:
@@ -8,12 +8,12 @@
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
--- teams: cadastro dos 20 clubes da Premier League
+-- teams: cadastro das seleções nacionais
 -- ---------------------------------------------------------------------------
 create table if not exists public.teams (
   id              serial primary key,
   name            text not null unique,
-  slug            text not null unique,        -- ex: "arsenal", "manchester-city"
+  slug            text not null unique,        -- ex: "brazil", "argentina"
   primary_color   text not null default '#1B3A6B',
   secondary_color text not null default '#FFFFFF',
   badge_url       text,                        -- URL do escudo (popular manualmente ou via API)
@@ -44,7 +44,7 @@ create table if not exists public.matches (
 
   -- Contexto da partida
   competition         text not null,
-  season              text,                   -- ex: "Premier League 24/25"
+  season              text,                   -- ex: "World Cup 2026"
   round_number        int,                    -- rodada
   venue               text,
   venue_city          text,
@@ -112,7 +112,9 @@ create table if not exists public.match_stats (
 );
 
 -- ---------------------------------------------------------------------------
--- pipeline_runs: log de execuções do pipeline (exibido no botão do portfolio)
+-- pipeline_runs: log opcional de execuções do scraper.
+-- LEGADO: criada para a orquestração (Airflow + frontend), que saiu de escopo.
+-- Mantida apenas como registro manual de execuções; pode ser removida.
 -- ---------------------------------------------------------------------------
 create table if not exists public.pipeline_runs (
   id          uuid primary key default gen_random_uuid(),

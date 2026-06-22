@@ -1,5 +1,5 @@
 -- =============================================================================
--- Premier League Analytics — Estatísticas de jogadores por partida
+-- World Cup Analytics — Estatísticas de jogadores por partida
 -- Executar APÓS 001_schema.sql
 -- =============================================================================
 
@@ -65,10 +65,3 @@ alter table public.player_match_stats enable row level security;
 
 create policy "public read player_match_stats"
   on public.player_match_stats for select using (true);
-
--- ---------------------------------------------------------------------------
--- Power BI reader — adicionar SELECT nesta tabela
--- ---------------------------------------------------------------------------
--- Se o role powerbi_reader já existe, rode esta linha separadamente:
--- grant select on public.player_match_stats to powerbi_reader;
--- ---------------------------------------------------------------------------

@@ -21,15 +21,6 @@ scraper/tests/fixtures/*.json
 .env
 .env.local
 
-# Node / Next.js (future portfolio phase)
-node_modules/
-.next/
-portfolio/.env
-portfolio/.env.local
-
-# Power BI
-*.pbix
-
 # OS
 .DS_Store
 Thumbs.db

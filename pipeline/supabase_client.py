@@ -1,5 +1,5 @@
 """
-Supabase integration for Premier League Analytics pipeline.
+Supabase integration for World Cup Analytics.
 
 Functions:
     get_client()             → authenticated Supabase client

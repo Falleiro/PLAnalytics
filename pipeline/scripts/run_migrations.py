@@ -1,5 +1,5 @@
 """
-Premier League Analytics — Migration runner
+World Cup Analytics — Migration runner
 Executa os arquivos SQL de data/sql/ em ordem no PostgreSQL do Supabase.
 
 Uso:
@@ -30,7 +30,7 @@ SQL_DIR = ROOT_DIR / "data" / "sql"
 MIGRATIONS = [
     "001_schema.sql",
     "002_rls_policies.sql",
-    "003_powerbi_role.sql",
+    "004_player_stats.sql",
 ]
 
 
@@ -57,8 +57,7 @@ def run_migrations(skip: list[str] | None = None) -> None:
     Execute SQL migration files in order.
 
     Args:
-        skip: list of filenames to skip (e.g. ["003_powerbi_role.sql"] if you
-              want to set the password manually in the Supabase dashboard).
+        skip: list of filenames to skip (e.g. ["002_rls_policies.sql"]).
     """
     skip = skip or []
     conn = get_connection()
@@ -93,17 +92,14 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Run Supabase SQL migrations for Premier League Analytics"
+        description="Run Supabase SQL migrations for World Cup Analytics"
     )
     parser.add_argument(
         "--skip",
         nargs="*",
         default=[],
         metavar="FILE",
-        help=(
-            "SQL files to skip. Example: --skip 003_powerbi_role.sql "
-            "(use this if you prefer to set the powerbi_reader password manually)"
-        ),
+        help="SQL files to skip. Example: --skip 002_rls_policies.sql",
     )
     args = parser.parse_args()
 

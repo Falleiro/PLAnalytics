@@ -1,5 +1,5 @@
 """
-Premier League Analytics — Setup Supabase Storage
+World Cup Analytics — Setup Supabase Storage
 Cria o bucket 'raw-data' para armazenar os JSONs brutos do scraper.
 
 Uso:

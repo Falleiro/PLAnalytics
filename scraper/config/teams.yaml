@@ -1,124 +1,202 @@
-# Premier League 2024/25 teams
-# sofascore_id: verified against https://www.sofascore.com/team/football/{slug}/{id}
-# Verify IDs by opening DevTools → Network → filter "events/last" when visiting any team page
+# =============================================================================
+# Seleções da Copa do Mundo FIFA 2026 (48 seleções)
+# =============================================================================
+# Gerado automaticamente a partir do SofaScore (uniqueTournament id 16),
+# extraindo o __NEXT_DATA__ da página do torneio.
+#
+# sofascore_id: ID da seleção no SofaScore (https://www.sofascore.com/team/football/{slug}/{id})
+# Cores omitidas de propósito: TeamConfig aplica defaults (não usamos dashboard).
+# =============================================================================
 
 teams:
-  - name: Arsenal
-    slug: arsenal
-    sofascore_id: 42
-    primary_color: "#EF0107"
-    secondary_color: "#FFFFFF"
+  - name: Algeria
+    slug: algeria
+    sofascore_id: 4691
 
-  - name: Aston Villa
-    slug: aston-villa
-    sofascore_id: 40
-    primary_color: "#670E36"
-    secondary_color: "#95BFE5"
+  - name: Argentina
+    slug: argentina
+    sofascore_id: 4819
 
-  - name: Bournemouth
-    slug: bournemouth
-    sofascore_id: 60
-    primary_color: "#DA291C"
-    secondary_color: "#000000"
+  - name: Australia
+    slug: australia
+    sofascore_id: 4741
 
-  - name: Brentford
-    slug: brentford
-    sofascore_id: 50
-    primary_color: "#E30613"
-    secondary_color: "#FFE500"
+  - name: Austria
+    slug: austria
+    sofascore_id: 4718
 
-  - name: Brighton
-    slug: brighton-hove-albion
-    sofascore_id: 211
-    primary_color: "#0057B8"
-    secondary_color: "#FFCD00"
+  - name: Belgium
+    slug: belgium
+    sofascore_id: 4717
 
-  - name: Chelsea
-    slug: chelsea
-    sofascore_id: 38
-    primary_color: "#034694"
-    secondary_color: "#FFFFFF"
+  - name: Bosnia & Herzegovina
+    slug: bosnia-and-herzegovina
+    sofascore_id: 4479
 
-  - name: Crystal Palace
-    slug: crystal-palace
-    sofascore_id: 7
-    primary_color: "#1B458F"
-    secondary_color: "#C4122E"
+  - name: Brazil
+    slug: brazil
+    sofascore_id: 4748
 
-  - name: Everton
-    slug: everton
-    sofascore_id: 48
-    primary_color: "#003399"
-    secondary_color: "#FFFFFF"
+  - name: Cabo Verde
+    slug: cape-verde
+    sofascore_id: 4753
 
-  - name: Fulham
-    slug: fulham
-    sofascore_id: 43
-    primary_color: "#000000"
-    secondary_color: "#FFFFFF"
+  - name: Canada
+    slug: canada
+    sofascore_id: 4752
 
-  - name: Ipswich Town
-    slug: ipswich-town
-    sofascore_id: 32
-    primary_color: "#3A64A3"
-    secondary_color: "#FFFFFF"
+  - name: Colombia
+    slug: colombia
+    sofascore_id: 4820
 
-  - name: Leicester City
-    slug: leicester-city
-    sofascore_id: 31
-    primary_color: "#003090"
-    secondary_color: "#FDBE11"
+  - name: Croatia
+    slug: croatia
+    sofascore_id: 4715
 
-  - name: Liverpool
-    slug: liverpool
-    sofascore_id: 44
-    primary_color: "#C8102E"
-    secondary_color: "#00B2A9"
+  - name: Curaçao
+    slug: curacao
+    sofascore_id: 55827
 
-  - name: Manchester City
-    slug: manchester-city
-    sofascore_id: 17
-    primary_color: "#6CABDD"
-    secondary_color: "#1C2C5B"
+  - name: Czechia
+    slug: czech-republic
+    sofascore_id: 4714
 
-  - name: Manchester United
-    slug: manchester-united
-    sofascore_id: 35
-    primary_color: "#DA020E"
-    secondary_color: "#FFE500"
+  - name: Côte d'Ivoire
+    slug: cote-divoire
+    sofascore_id: 4768
 
-  - name: Newcastle United
-    slug: newcastle-united
-    sofascore_id: 39
-    primary_color: "#241F20"
-    secondary_color: "#FFFFFF"
+  - name: DR Congo
+    slug: dr-congo
+    sofascore_id: 4823
 
-  - name: Nottingham Forest
-    slug: nottingham-forest
-    sofascore_id: 14
-    primary_color: "#DD0000"
-    secondary_color: "#FFFFFF"
+  - name: Ecuador
+    slug: ecuador
+    sofascore_id: 4757
 
-  - name: Southampton
-    slug: southampton
-    sofascore_id: 45
-    primary_color: "#D71920"
-    secondary_color: "#130C0E"
+  - name: Egypt
+    slug: egypt
+    sofascore_id: 4758
 
-  - name: Tottenham Hotspur
-    slug: tottenham-hotspur
-    sofascore_id: 33
-    primary_color: "#132257"
-    secondary_color: "#FFFFFF"
+  - name: England
+    slug: england
+    sofascore_id: 4713
 
-  - name: West Ham United
-    slug: west-ham-united
-    sofascore_id: 37
-    primary_color: "#7A263A"
-    secondary_color: "#1BB1E7"
+  - name: France
+    slug: france
+    sofascore_id: 4481
 
-  - name: Wolverhampton
-    slug: wolverhampton-wanderers
-    sofascore_id: 3
-    primary_color: "#FDB913"
-    secondary_color: "#231F20"
+  - name: Germany
+    slug: germany
+    sofascore_id: 4711
+
+  - name: Ghana
+    slug: ghana
+    sofascore_id: 4764
+
+  - name: Haiti
+    slug: haiti
+    sofascore_id: 7229
+
+  - name: Iran
+    slug: iran
+    sofascore_id: 4766
+
+  - name: Iraq
+    slug: iraq
+    sofascore_id: 4767
+
+  - name: Japan
+    slug: japan
+    sofascore_id: 4770
+
+  - name: Jordan
+    slug: jordan
+    sofascore_id: 4771
+
+  - name: Mexico
+    slug: mexico
+    sofascore_id: 4781
+
+  - name: Morocco
+    slug: morocco
+    sofascore_id: 4778
+
+  - name: Netherlands
+    slug: netherlands
+    sofascore_id: 4705
+
+  - name: New Zealand
+    slug: new-zealand
+    sofascore_id: 4784
+
+  - name: Norway
+    slug: norway
+    sofascore_id: 4475
+
+  - name: Panama
+    slug: panama
+    sofascore_id: 5164
+
+  - name: Paraguay
+    slug: paraguay
+    sofascore_id: 4789
+
+  - name: Portugal
+    slug: portugal
+    sofascore_id: 4704
+
+  - name: Qatar
+    slug: qatar
+    sofascore_id: 4792
+
+  - name: Saudi Arabia
+    slug: saudi-arabia
+    sofascore_id: 4834
+
+  - name: Scotland
+    slug: scotland
+    sofascore_id: 4695
+
+  - name: Senegal
+    slug: senegal
+    sofascore_id: 4739
+
+  - name: South Africa
+    slug: south-africa
+    sofascore_id: 4736
+
+  - name: South Korea
+    slug: south-korea
+    sofascore_id: 4735
+
+  - name: Spain
+    slug: spain
+    sofascore_id: 4698
+
+  - name: Sweden
+    slug: sweden
+    sofascore_id: 4688
+
+  - name: Switzerland
+    slug: switzerland
+    sofascore_id: 4699
+
+  - name: Tunisia
+    slug: tunisia
+    sofascore_id: 4729
+
+  - name: Türkiye
+    slug: turkey
+    sofascore_id: 4700
+
+  - name: Uruguay
+    slug: uruguay
+    sofascore_id: 4725
+
+  - name: USA
+    slug: usa
+    sofascore_id: 4724
+
+  - name: Uzbekistan
+    slug: uzbekistan
+    sofascore_id: 4723

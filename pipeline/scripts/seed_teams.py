@@ -1,6 +1,6 @@
 """
-Premier League Analytics — Seed tabela `teams`
-Lê scraper/config/teams.yaml e faz upsert dos 20 times no Supabase.
+World Cup Analytics — Seed tabela `teams`
+Lê scraper/config/teams.yaml e faz upsert das seleções no Supabase.
 
 Uso:
     python pipeline/scripts/seed_teams.py

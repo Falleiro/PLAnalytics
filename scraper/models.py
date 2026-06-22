@@ -1,5 +1,5 @@
 """
-Pydantic v2 models for Premier League Analytics scraper.
+Pydantic v2 models for World Cup Analytics scraper.
 
 Hierarchy:
     TeamScrapeResult
