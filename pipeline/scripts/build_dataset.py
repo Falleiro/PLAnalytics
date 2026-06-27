@@ -106,30 +106,56 @@ def build(include_players: bool = True) -> pd.DataFrame:
     match_stats = pd.DataFrame(_fetch_all("match_stats"))
     logger.info(f"matches={len(matches)} match_stats={len(match_stats)}")
 
-    # --- match_stats (time mandante) → prefixo home_ ---
+    # --- match_stats (home_ e away_) ---
+    # Os campos sem sufixo viram home_*, os campos _against viram away_* (ver _rename_stat).
     ms = match_stats.drop(columns=["id"]).copy()
-    # Recupera pass_accuracy_pct (vinha vazia) a partir de passes certos/total
+    # Computa acurácia de passe HOME (campo derivado; SofaScore não retorna awayValue)
     ms["pass_accuracy_pct"] = (ms["passes_accurate"] / ms["passes_total"] * 100).round(1)
+    # AWAY pass accuracy: SofaScore não expõe awayValue de "Accurate passes %" →
+    # pass_accuracy_pct_against é sempre null no banco. Quando passes_accurate_against
+    # for adicionado ao banco (futura migration), computar aqui:
+    if "passes_accurate_against" in ms.columns and "passes_total_against" in ms.columns:
+        ms["pass_accuracy_pct_against"] = (
+            ms["passes_accurate_against"] / ms["passes_total_against"] * 100
+        ).round(1)
     # Remove colunas 100% vazias sem fonte para preencher:
     # - long_balls_accurate, ground_duels_* : não há equivalente nos jogadores
     # - dribbles_succeeded, aerial_duels_*  : substituídas por agregados de jogadores
-    #   (dribbles_won_sum, aerial_won_sum, aerial_total_sum) dos DOIS lados
+    # - pass_accuracy_pct_against           : SofaScore não retorna awayValue deste stat
     EMPTY_DROP = [
         "long_balls_accurate", "ground_duels_total", "ground_duels_won",
         "dribbles_succeeded", "aerial_duels_total", "aerial_duels_won",
+        "pass_accuracy_pct_against",
     ]
     ms = ms.drop(columns=[c for c in EMPTY_DROP if c in ms.columns])
-    ms = ms.rename(columns={c: f"home_{c}" for c in ms.columns if c != "match_id"})
+    # Renomeia: <campo> -> home_<campo>; <campo>_against -> away_<campo>.
+    # Assim o dataset fica simétrico (home_* / away_*) para os stats de time.
+    def _rename_stat(c: str) -> str:
+        if c == "match_id":
+            return c
+        if c.endswith("_against"):
+            return f"away_{c[:-len('_against')]}"
+        return f"home_{c}"
+    ms = ms.rename(columns={c: _rename_stat(c) for c in ms.columns})
 
     # --- montagem do df (1 linha por partida) ---
     keep = [
         "id", "sofascore_event_id", "match_date", "competition", "season",
         "round_number", "home_team", "away_team", "venue", "venue_city",
         "attendance", "referee", "score_home", "score_away",
-        "score_home_ht", "score_away_ht", "result",
+        "score_home_ht", "score_away_ht",
+        "home_team_ranking", "away_team_ranking", "result",
     ]
     df = matches[keep].rename(columns={"id": "match_id"})
     df = df.merge(ms, on="match_id", how="left")
+
+    # Resultado pela OTICA DO MANDANTE (derivado do placar). ATENCAO: a coluna
+    # `result` herdada vem da perspectiva do time RASPADO (ora mandante, ora
+    # visitante), o que INVERTE W<->L em ~35% dos jogos se lida como se fosse a
+    # do mandante. `result_home` e inequivoca — sempre a otica de quem jogou em
+    # casa. Use ESTA coluna na modelagem (a antiga fica so por compatibilidade).
+    gd = df["score_home"] - df["score_away"]
+    df["result_home"] = gd.apply(lambda x: "W" if x > 0 else ("D" if x == 0 else "L"))
 
     if include_players:
         logger.info("Agregando jogadores por (match_id, team_side)...")
@@ -138,8 +164,40 @@ def build(include_players: bool = True) -> pd.DataFrame:
         player_feats = _aggregate_players(players)
         df = df.merge(player_feats, on="match_id", how="left")
 
+    # Feature derivada: diferença de ranking (ranking menor = mais forte, logo
+    # rank_diff > 0 indica mandante mais bem ranqueado). NaN se faltar algum lado.
+    if {"home_team_ranking", "away_team_ranking"}.issubset(df.columns):
+        df["rank_diff"] = df["away_team_ranking"] - df["home_team_ranking"]
+
     # match_id interno (uuid) fora; sofascore_event_id é a chave pública
     df = df.drop(columns=["match_id"])
+
+    # Deduplicar por evento: o mesmo jogo pode ter sido raspado pelos DOIS lados
+    # (há 1 linha em `matches` por team_id, ex.: Algeria×Uruguay aparece sob a
+    # Algeria e sob o Uruguai). Quando isso ocorre, uma das cópias pode estar sem
+    # agregados de jogador. Mantemos a cópia MAIS COMPLETA (com player stats) para
+    # não contar o jogo em dobro nem perder os dados que existem do outro lado.
+    if include_players and "home_rating_mean" in df.columns:
+        n_before = len(df)
+        df["_completeness"] = (
+            df["home_rating_mean"].notna().astype(int)
+            + df["home_possession_pct"].notna().astype(int)
+            # desempata a favor da cópia que TEM stats do visitante (away_*): o
+            # mesmo evento pode ter sido raspado pelos dois lados, e só um re-fetch
+            # recente traz o lado de fora. Sem isto, a cópia antiga (só mandante)
+            # poderia vencer e descartar o visitante recuperado.
+            + (df["away_possession_pct"].notna().astype(int)
+               if "away_possession_pct" in df.columns else 0)
+        )
+        df = (
+            df.sort_values(["sofascore_event_id", "_completeness"])
+            .drop_duplicates("sofascore_event_id", keep="last")
+            .drop(columns="_completeness")
+        )
+        n_dups = n_before - len(df)
+        if n_dups:
+            logger.info(f"Deduplicação por evento: {n_dups} linha(s) duplicada(s) removida(s)")
+
     df = df.sort_values("match_date").reset_index(drop=True)
     logger.success(f"DataFrame final: {df.shape[0]} partidas × {df.shape[1]} colunas")
     return df

@@ -70,6 +70,87 @@ def _existing_event_ids() -> set[int]:
     return ids
 
 
+def _rated_match_uuids() -> set[str]:
+    """match_id (uuid) de partidas que já têm ≥1 jogador com rating preenchido."""
+    client = get_client()
+    uuids: set[str] = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        rows = (
+            client.table("player_match_stats")
+            .select("match_id")
+            .not_.is_("rating", "null")
+            .range(offset, offset + page_size - 1)
+            .execute()
+            .data
+        )
+        if not rows:
+            break
+        uuids.update(r["match_id"] for r in rows if r.get("match_id"))
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return uuids
+
+
+def _refetch_targets(teams: list[TeamConfig]) -> tuple[set[int], list[TeamConfig]]:
+    """Para o modo --refetch-missing.
+
+    Retorna:
+      - complete_event_ids: sofascore_event_id que JÁ têm stats de jogador (com
+        rating). Pré-carregados no dedup → o scraper PULA esses e re-busca só os
+        que faltam.
+      - teams_to_run: seleções que possuem ≥1 evento incompleto (sem rating),
+        para não navegar páginas de times que já estão 100% completos.
+    """
+    client = get_client()
+    rated_uuids = _rated_match_uuids()
+
+    # matches: id(uuid) → (event_id, team_id)
+    matches = _fetch_matches_min()
+    slug_by_team_id = {t["id"]: t["slug"] for t in client.table("teams").select("id,slug").execute().data}
+
+    complete_event_ids: set[int] = set()
+    incomplete_team_slugs: set[str] = set()
+    for m in matches:
+        eid = m.get("sofascore_event_id")
+        if eid is None:
+            continue
+        if m["id"] in rated_uuids:
+            complete_event_ids.add(eid)
+        else:
+            slug = slug_by_team_id.get(m.get("team_id"))
+            if slug:
+                incomplete_team_slugs.add(slug)
+
+    teams_to_run = [t for t in teams if t.slug in incomplete_team_slugs]
+    return complete_event_ids, teams_to_run
+
+
+def _fetch_matches_min() -> list[dict]:
+    """Todas as linhas de matches (id, sofascore_event_id, team_id), paginado."""
+    client = get_client()
+    rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    while True:
+        page = (
+            client.table("matches")
+            .select("id,sofascore_event_id,team_id")
+            .range(offset, offset + page_size - 1)
+            .execute()
+            .data
+        )
+        if not page:
+            break
+        rows.extend(page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
 def _teams_without_matches(teams: list[TeamConfig]) -> list[TeamConfig]:
     """Seleções que ainda não têm nenhuma linha em matches (team_id)."""
     client = get_client()
@@ -80,18 +161,24 @@ def _teams_without_matches(teams: list[TeamConfig]) -> list[TeamConfig]:
     return [t for t in teams if t.slug not in slugs_with_matches]
 
 
-async def run(teams: list[TeamConfig], last_n: int, workers: int) -> None:
+async def run(
+    teams: list[TeamConfig],
+    last_n: int,
+    workers: int,
+    seen_preload: set[int] | None = None,
+) -> None:
     if _HEADLESS:
         logger.warning(
             "PLAYWRIGHT_HEADLESS não está 'false' — SofaScore bloqueia headless. "
             "Rode com PLAYWRIGHT_HEADLESS=false."
         )
 
-    # Pré-carrega o dedup com o que já está no banco → reexecuções pulam jogos
-    # já coletados (resumível e sem duplicatas).
-    seen_event_ids: set[int] = _existing_event_ids()
+    # Pré-carrega o dedup. Default: tudo que já está no banco (reexecuções pulam
+    # jogos já coletados). No modo --refetch-missing, recebe só os eventos JÁ
+    # COMPLETOS → os incompletos NÃO estão no set e portanto são re-buscados.
+    seen_event_ids: set[int] = seen_preload if seen_preload is not None else _existing_event_ids()
     if seen_event_ids:
-        logger.info(f"Dedup pré-carregado com {len(seen_event_ids)} jogos já no banco")
+        logger.info(f"Dedup pré-carregado com {len(seen_event_ids)} jogos (serão pulados)")
     sem = asyncio.Semaphore(workers)
     totals: dict[str, int] = {}
 
@@ -144,6 +231,11 @@ def main() -> None:
         "--missing", action="store_true",
         help="Só as seleções que ainda não têm jogos no banco (recuperar gaps)",
     )
+    group.add_argument(
+        "--refetch-missing", action="store_true",
+        help="Re-busca só os eventos que estão SEM stats de jogador (rating). "
+             "Pula os já completos. Use --last alto (ex.: 50) p/ alcançar jogos antigos.",
+    )
     parser.add_argument(
         "--last", type=int, default=30, metavar="N",
         help="Número de jogos por seleção (default: 30)",
@@ -158,6 +250,7 @@ def main() -> None:
     _setup_logging(debug=args.debug)
     teams = load_teams()
 
+    seen_preload: set[int] | None = None
     if args.team:
         selected = [find_team(args.team, teams)]
     elif args.missing:
@@ -166,6 +259,15 @@ def main() -> None:
             logger.success("Nenhuma seleção faltando — base completa.")
             return
         logger.info(f"Seleções faltando: {', '.join(t.name for t in selected)}")
+    elif args.refetch_missing:
+        seen_preload, selected = _refetch_targets(teams)
+        if not selected:
+            logger.success("Nenhum evento sem stats de jogador — base completa.")
+            return
+        logger.info(
+            f"Re-fetch de eventos incompletos — {len(selected)} seleção(ões) "
+            f"afetada(s); {len(seen_preload)} eventos já completos serão pulados"
+        )
     else:
         selected = teams
 
@@ -174,7 +276,7 @@ def main() -> None:
         f"Carregando {len(selected)} seleção(ões) — últimos {args.last} jogos "
         f"— {workers} worker(s) em paralelo"
     )
-    asyncio.run(run(selected, args.last, workers))
+    asyncio.run(run(selected, args.last, workers, seen_preload=seen_preload))
 
 
 if __name__ == "__main__":

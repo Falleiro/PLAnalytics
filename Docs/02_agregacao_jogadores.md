@@ -112,24 +112,34 @@ DF ÚNICO (1 linha por partida)
 
 ---
 
-## 6. Distinção crítica: BASE descritiva × ABT preditiva (vazamento de dados)
+## 6. Distinção crítica: stats DA partida × forma PRÉ-jogo (vazamento de dados)
 
-Há **dois usos** do mesmo df, e eles diferem num ponto essencial:
+Cada coluna do df tem **dois papéis possíveis**, e eles diferem num ponto essencial:
 
-- **Base descritiva (entrega atual ao professor):** cada linha descreve uma partida
-  que **já aconteceu**, então pode conter os agregados de jogadores **daquele jogo**
-  (ex.: `home_rating_max` = melhor rating da escalação naquela partida). Serve para
-  análise/EDA e como entregável da base.
+- **Stats medidas DURANTE a partida** (`home_rating_max`, `home_possession_pct`,
+  `home_expected_goals`, etc.): descrevem o que aconteceu **naquele** jogo. Servem
+  para **análise descritiva/EDA** da base (a partida já ocorreu), mas **não existem
+  antes** de um jogo a prever. Usá-las para prever aquele mesmo jogo é **vazamento de
+  dados** — e, num teste de significância, dão resultado quase tautológico (quem fez
+  mais gols venceu).
 
-- **ABT preditiva (modelagem, fase seguinte):** para **prever** um jogo, as stats
-  dos jogadores **daquele** jogo não existem antes da partida → usá-las seria
-  **vazamento de dados**. Nessa fase, cada feature de jogador vira a **média móvel
-  dos N jogos anteriores** de cada seleção (ex.: "`rating_max` médio da escalação da
-  Argentina nos últimos 5 jogos") e, idealmente, a **diferença** entre os lados
-  (`home − away`).
+- **Forma PRÉ-jogo (média móvel leakage-safe):** para cada seleção, a **média dos N
+  jogos anteriores** de cada métrica (ex.: "`rating_mean` médio da Argentina nos
+  últimos 5 jogos"), calculada com `shift(1)` para **excluir a própria partida**, e a
+  **diferença** entre os lados (`home − away` → `form_diff_*`). Essas são as features
+  **realmente disponíveis antes do apito inicial** e os **preditores válidos** do
+  modelo.
 
-> Em resumo: a **mesma lógica de agregação** alimenta os dois; muda apenas se ela é
-> aplicada à própria partida (base) ou em janela passada (ABT preditiva).
+> **Mudança de escopo (jun/2026):** a construção dessas médias móveis foi **antecipada
+> para a Fase 3** (`notebooks/03_preparacao_e_analise.ipynb`, **Seção 3.5**), em vez de
+> ficar só na modelagem. Assim a **análise estatística inferencial da Fase 3
+> (Seção 4.4)** testa a significância das features pré-jogo **de verdade**
+> (`form_diff_*`, `rank_diff`) — alinhando a etapa de preparação com a de modelagem.
+> A Fase 4 reaproveita exatamente as mesmas colunas para treinar o modelo.
+
+> Em resumo: a **mesma lógica de agregação** alimenta os dois papéis; muda apenas se
+> ela é aplicada à própria partida (descritivo/EDA) ou em janela passada
+> (`form_*` / `form_diff_*`, preditivo e leakage-safe).
 
 ---
 
@@ -149,12 +159,34 @@ Há **dois usos** do mesmo df, e eles diferem num ponto essencial:
 
 Estado da base gerada (jun/2026, `output/worldcup_dataset.xlsx`):
 
-- **1.101 partidas × 78 colunas** (1 linha por partida).
-- **872 (79%)** partidas têm agregados de jogadores completos (com rating).
-- **120** têm escalação mas **sem rating** e **109** sem linhas de jogador —
-  concentradas em **amistosos e eliminatórias menores** (CAF/AFC/AfCON quals),
-  onde o SofaScore **não fornece rating de jogador**. É limitação da **fonte**,
-  não do pipeline; nessas linhas as colunas de jogador ficam vazias (NaN).
+- **1.138 partidas × 102 colunas** (1 linha por partida, **deduplicadas por evento**).
+- **984 (86,5%)** partidas têm agregados de jogadores completos (com rating).
+
+> **Extensão de features (jun/2026 — ver `Docs/03`):** após análise das tabelas + literatura,
+> o `MatchStats`/`Match` passaram a capturar o que o SofaScore fornecia e era descartado:
+> **xG/xGA de time** (`home/away_expected_goals`, 52% — só competições maiores), **ranking
+> tipo FIFA das duas seleções** (`home/away_team_ranking` + `rank_diff`, 97%), **estatísticas
+> simétricas do visitante** (`away_*`, ~86%) e `goals_prevented`. Também corrigidos 3 bugs de
+> chave de jogador (`goalAssist`/`interceptionWon`/`fouls`, antes 0%). Backfill via
+> `refetch_missing_by_id.py --all-events` (upsert incremental + resumível).
+- **154** sem agregados de jogador — quase todas **lacuna real da fonte**: amistosos
+  e eliminatórias menores (CAF/AFC/AfCON quals) e jogos antigos onde o SofaScore
+  **não publica rating de jogador**, além de jogos muito recentes cujo rating ainda
+  não saiu. Nessas linhas as colunas de jogador ficam vazias (NaN).
+
+> **Recuperação de lineups (jun/2026):** uma versão anterior tinha só **872/1101 (79%)**.
+> Três correções elevaram para **86,5%**:
+> 1. **Retry de lineups** (`_fetch_lineups_with_retry`): a chamada é lazy-loaded e
+>    falhava em 1 tentativa; agora re-tenta até obter os ratings. Com
+>    `scrape_and_load.py --refetch-missing` → **+112 partidas**.
+> 2. **Deduplicação por evento** (`build_dataset.py`): o mesmo jogo podia ser raspado
+>    pelos dois lados (1 linha por `team_id`); mantém-se a cópia mais completa.
+> 3. **Re-fetch por id** (`refetch_missing_by_id.py`): a página do time só expõe os
+>    ~30 jogos mais recentes, então jogos antigos ficavam inalcançáveis. Descobriu-se
+>    que `sofascore.com/event/{id}` **redireciona para a partida**, permitindo buscar
+>    qualquer evento só pelo id (fallback em `_match_url`). Dos 158 incompletos
+>    testados, **só 2 eram recuperáveis** — confirmando que os **156 restantes são
+>    limitação da fonte**, não do pipeline.
 
 **Limitação do `match_stats` (stats de time):** o scraper original salvou apenas o
 lado do **mandante** (só `home_val`). Por isso as colunas de estatística de time

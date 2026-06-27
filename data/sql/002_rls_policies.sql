@@ -10,7 +10,6 @@
 alter table public.teams          enable row level security;
 alter table public.matches        enable row level security;
 alter table public.match_stats    enable row level security;
-alter table public.pipeline_runs  enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- Política de leitura pública (SELECT) para usuários anônimos
@@ -27,10 +26,6 @@ create policy "public read matches"
 
 create policy "public read match_stats"
   on public.match_stats for select
-  using (true);
-
-create policy "public read pipeline_runs"
-  on public.pipeline_runs for select
   using (true);
 
 -- ---------------------------------------------------------------------------

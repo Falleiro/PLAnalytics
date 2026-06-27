@@ -45,8 +45,8 @@ def _make_event_raw(
         "event": {
             "id": event_id,
             "startTimestamp": 1700000000,
-            "homeTeam": {"id": home_id, "name": home_name, "slug": home_name.lower()},
-            "awayTeam": {"id": away_id, "name": away_name, "slug": away_name.lower()},
+            "homeTeam": {"id": home_id, "name": home_name, "slug": home_name.lower(), "ranking": 6},
+            "awayTeam": {"id": away_id, "name": away_name, "slug": away_name.lower(), "ranking": 40},
             "homeScore": {"current": score_home, "period1": score_home_ht, "period2": score_home - score_home_ht},
             "awayScore": {"current": score_away, "period1": score_away_ht, "period2": score_away - score_away_ht},
             "status": {"type": "finished"},
@@ -276,6 +276,29 @@ class TestMatchStats:
         stats = MatchStats.model_validate(raw)
         assert stats.possession_pct == 58.0  # still parsed correctly
 
+    def test_expected_goals_and_two_sided(self):
+        raw = _make_stats_raw()
+        # xG é stat de alto valor e two-sided
+        raw["statistics"][0]["groups"][0]["statisticsItems"].append(
+            {"name": "Expected goals", "homeValue": 2.3, "awayValue": 0.83}
+        )
+        stats = MatchStats.model_validate(raw)
+        # novo campo capturado dos dois lados
+        assert stats.expected_goals == 2.3
+        assert stats.expected_goals_against == 0.83
+        # stats existentes do subconjunto two-sided ganham o lado do visitante
+        assert stats.shots_total == 15 and stats.shots_total_against == 8
+        assert stats.corners == 7 and stats.corners_against == 3
+
+    def test_goals_prevented_can_be_negative(self):
+        raw = _make_stats_raw()
+        raw["statistics"][0]["groups"][0]["statisticsItems"].append(
+            {"name": "Goals prevented", "homeValue": -0.25, "awayValue": 0.4}
+        )
+        stats = MatchStats.model_validate(raw)
+        assert stats.goals_prevented == -0.25
+        assert stats.goals_prevented_against == 0.4
+
 
 # ---------------------------------------------------------------------------
 # Incident
@@ -375,6 +398,24 @@ class TestPlayer:
         assert p.is_starter is True
         assert p.rating == 7.5
 
+    def test_assists_interceptions_fouls_keys(self):
+        # chaves reais do SofaScore (antes mapeadas erradas -> ficavam vazias)
+        raw = {
+            "player": {"id": 7, "name": "Midfielder"},
+            "position": "M",
+            "substitute": False,
+            "statistics": {
+                "rating": 7.1,
+                "goalAssist": 2,
+                "interceptionWon": 3,
+                "fouls": 1,
+            },
+        }
+        p = Player.model_validate(raw)
+        assert p.assists == 2
+        assert p.interceptions == 3
+        assert p.fouls_committed == 1
+
 
 class TestMatchLineups:
     def test_parse_sofascore_lineups(self):
@@ -407,6 +448,13 @@ class TestMatch:
     def test_win_as_home_team(self):
         match = self._make_match(team_name="Arsenal", score_home=2, score_away=1)
         assert match.result == "W"
+
+    def test_team_rankings_parsed(self):
+        match = self._make_match()
+        assert match.home_team_ranking == 6
+        assert match.away_team_ranking == 40
+        # xG dos dois lados também chega ao MatchStats da partida
+        assert match.stats is not None
 
     def test_draw(self):
         match = self._make_match(score_home=1, score_away=1)

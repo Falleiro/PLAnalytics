@@ -97,18 +97,20 @@ class Player(BaseModel):
             "rating":            stats.get("rating"),
             "minutes_played":    stats.get("minutesPlayed"),
             "goals":             stats.get("goals"),
-            "assists":           stats.get("assists"),
+            # SofaScore usa "goalAssist" (não "assists"); idem "interceptionWon"
+            # e "fouls" — chaves antes erradas deixavam estes campos 100% vazios.
+            "assists":           stats.get("goalAssist"),
             "shots_total":       stats.get("totalShots"),
             "shots_on_target":   stats.get("onTargetScoringAttempt"),
             "passes_total":      stats.get("totalPass"),
             "passes_accurate":   stats.get("accuratePass"),
             "key_passes":        stats.get("keyPass"),
             "tackles":           stats.get("totalTackle"),
-            "interceptions":     stats.get("totalInterceptionWon"),
+            "interceptions":     stats.get("interceptionWon"),
             "dribbles_won":      stats.get("wonContest"),
             "aerial_duels_won":  stats.get("aerialWon"),
             "aerial_duels_lost": stats.get("aerialLost"),
-            "fouls_committed":   stats.get("foulsCommited"),
+            "fouls_committed":   stats.get("fouls"),
             "yellow_cards":      stats.get("yellowCard"),
             "red_cards":         stats.get("redCard"),
             "saves":             stats.get("saves"),
@@ -251,6 +253,13 @@ class Incident(BaseModel):
 _STATS_KEY_MAP: dict[str, str] = {
     # Possession
     "Ball possession": "possession_pct",
+    # Advanced / quality (preditores de maior valor — ver Docs/03)
+    "Expected goals": "expected_goals",
+    "Goals prevented": "goals_prevented",
+    "Big chances scored": "big_chances_scored",
+    "Touches in penalty area": "touches_in_box",
+    "Final third entries": "final_third_entries",
+    "Recoveries": "recoveries",
     # Shooting
     "Total shots": "shots_total",
     "Shots on target": "shots_on_target",
@@ -287,6 +296,16 @@ _STATS_KEY_MAP: dict[str, str] = {
     "Red cards": "red_cards",
 }
 
+# Campos para os quais guardamos TAMBÉM o lado do visitante (sufixo "_against").
+# Restrito ao subconjunto de alto valor (o scraper antigo só salvava o mandante).
+_TWO_SIDED_STATS: set[str] = {
+    "possession_pct", "expected_goals", "goals_prevented",
+    "shots_total", "shots_on_target", "big_chances", "big_chances_scored",
+    "passes_total", "pass_accuracy_pct",
+    "touches_in_box", "final_third_entries", "recoveries",
+    "corners", "tackles", "interceptions",
+}
+
 NonNegInt = Annotated[int, Field(ge=0)]
 NonNegFloat = Annotated[float, Field(ge=0)]
 
@@ -296,6 +315,13 @@ class MatchStats(BaseModel):
 
     # Possession
     possession_pct: Optional[NonNegFloat] = None
+    # Advanced / quality
+    expected_goals: Optional[NonNegFloat] = None
+    goals_prevented: Optional[float] = None          # pode ser negativo
+    big_chances_scored: Optional[NonNegInt] = None
+    touches_in_box: Optional[NonNegInt] = None
+    final_third_entries: Optional[NonNegInt] = None
+    recoveries: Optional[NonNegInt] = None
     # Shooting
     shots_total: Optional[NonNegInt] = None
     shots_on_target: Optional[NonNegInt] = None
@@ -330,6 +356,23 @@ class MatchStats(BaseModel):
     fouls: Optional[NonNegInt] = None
     yellow_cards: Optional[NonNegInt] = None
     red_cards: Optional[NonNegInt] = None
+
+    # Lado do visitante (sufixo _against) — subconjunto de alto valor
+    expected_goals_against: Optional[NonNegFloat] = None
+    goals_prevented_against: Optional[float] = None
+    possession_pct_against: Optional[NonNegFloat] = None
+    shots_total_against: Optional[NonNegInt] = None
+    shots_on_target_against: Optional[NonNegInt] = None
+    big_chances_against: Optional[NonNegInt] = None
+    big_chances_scored_against: Optional[NonNegInt] = None
+    passes_total_against: Optional[NonNegInt] = None
+    pass_accuracy_pct_against: Optional[NonNegFloat] = None
+    touches_in_box_against: Optional[NonNegInt] = None
+    final_third_entries_against: Optional[NonNegInt] = None
+    recoveries_against: Optional[NonNegInt] = None
+    corners_against: Optional[NonNegInt] = None
+    tackles_against: Optional[NonNegInt] = None
+    interceptions_against: Optional[NonNegInt] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -389,10 +432,16 @@ class MatchStats(BaseModel):
                 # homeValue / awayValue are the numeric form when present.
                 home_val = item.get("homeValue")
                 if home_val is None:
-                    raw_str = item.get("home", "")
-                    home_val = _parse_stat_value(raw_str)
+                    home_val = _parse_stat_value(item.get("home", ""))
 
                 flat[field] = home_val
+
+                # Para o subconjunto de alto valor, guarda também o visitante.
+                if field in _TWO_SIDED_STATS:
+                    away_val = item.get("awayValue")
+                    if away_val is None:
+                        away_val = _parse_stat_value(item.get("away", ""))
+                    flat[f"{field}_against"] = away_val
 
         return flat
 
@@ -440,6 +489,10 @@ class Match(BaseModel):
     score_away: Annotated[int, Field(ge=0)]
     score_home_ht: Optional[NonNegInt] = None
     score_away_ht: Optional[NonNegInt] = None
+
+    # Ranking (tipo FIFA) embutido no payload do evento
+    home_team_ranking: Optional[int] = None
+    away_team_ranking: Optional[int] = None
 
     # Context
     competition: str
@@ -519,6 +572,8 @@ class Match(BaseModel):
             "score_away": score_away,
             "score_home_ht": score_home_ht,
             "score_away_ht": score_away_ht,
+            "home_team_ranking": home_team.get("ranking"),
+            "away_team_ranking": away_team.get("ranking"),
             "competition": tournament.get("name", ""),
             "season": season_obj.get("name"),
             "round_number": round_info.get("round"),

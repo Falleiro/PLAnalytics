@@ -50,9 +50,20 @@ API_BASE = "https://api.sofascore.com/api/v1"
 API_PAGE_BASE = "https://www.sofascore.com/api/v1"
 TEAM_PAGE_BASE = "https://www.sofascore.com/team/football"
 MATCH_PAGE_BASE = "https://www.sofascore.com/football/match"
+# Short per-event URL that redirects to the full match page. Lets us reach an
+# event by id alone (no customId/slug needed) — essential to re-fetch old games
+# that fell outside the team page's ~30-event window.
+EVENT_PAGE_BASE = "https://www.sofascore.com/event"
 
 # Per-event detail fetching (navigate to match page + intercept the stats call)
 EVENT_DETAIL_WAIT_S = 8  # max seconds to wait for the statistics response
+
+# Lineups (player stats) are lazy-loaded and the first page-context fetch can race
+# the page and come back empty / without ratings. Retry a few times, nudging the
+# Lineups tab, before giving up. The match page is keyed by event id, so there is
+# no "opponent path" to try — the same event resolves to the same page.
+LINEUPS_RETRIES = 4       # total attempts to obtain lineups WITH player ratings
+LINEUPS_RETRY_WAIT_MS = 1200
 
 # Tournament filter on SofaScore (uniqueTournament IDs).
 # None = collect matches from ANY tournament (World Cup, qualifiers, friendlies,
@@ -237,13 +248,21 @@ class SofaScoreScraper:
 
     @staticmethod
     def _match_url(event: dict[str, Any]) -> str | None:
-        """Build the SofaScore match-page URL for an event."""
+        """Build the SofaScore match-page URL for an event.
+
+        Prefers the canonical `…/match/home-away/customId#id:eid` URL. When the
+        customId/slugs are unknown (e.g. re-fetching an old event by id only),
+        falls back to the short `…/event/{eid}` URL, which SofaScore redirects to
+        the full match page.
+        """
         eid = event.get("id")
+        if not eid:
+            return None
         custom_id = event.get("customId")
         home_slug = event.get("homeTeam", {}).get("slug", "")
         away_slug = event.get("awayTeam", {}).get("slug", "")
-        if not eid or not custom_id:
-            return None
+        if not custom_id:
+            return f"{EVENT_PAGE_BASE}/{eid}"
         return f"{MATCH_PAGE_BASE}/{home_slug}-{away_slug}/{custom_id}#id:{eid}"
 
     async def _page_fetch_json(self, paths: dict[str, str]) -> dict[str, Any]:
@@ -266,16 +285,65 @@ class SofaScoreScraper:
             logger.warning(f"page.evaluate fetch failed: {e}")
             return {}
 
+    async def _click_tab(self, *texts: str) -> None:
+        """Click the first visible tab matching any of the given label texts."""
+        for text in texts:
+            for sel in (f'a:has-text("{text}")', f'button:has-text("{text}")'):
+                try:
+                    el = self.page.locator(sel).first
+                    if await el.count() and await el.is_visible():
+                        await el.click(timeout=3000)
+                        return
+                except Exception:
+                    pass
+
     async def _click_statistics_tab(self) -> None:
         """Force the lazy-loaded Statistics tab to fetch /statistics."""
-        for sel in ('a:has-text("Statistics")', 'button:has-text("Statistics")'):
-            try:
-                el = self.page.locator(sel).first
-                if await el.count() and await el.is_visible():
-                    await el.click(timeout=3000)
-                    return
-            except Exception:
-                pass
+        await self._click_tab("Statistics", "Estatísticas")
+
+    @staticmethod
+    def _lineups_have_ratings(lineups_raw: Any) -> bool:
+        """True if the raw /lineups payload contains at least one player rating.
+
+        We treat lineups *without ratings* as a miss: a confirmed lineup with no
+        per-player statistics gives us no modeling signal, which is exactly the
+        gap we are trying to recover.
+        """
+        if not isinstance(lineups_raw, dict):
+            return False
+        for side in ("home", "away"):
+            for p in (lineups_raw.get(side) or {}).get("players", []) or []:
+                if (p.get("statistics") or {}).get("rating") is not None:
+                    return True
+        return False
+
+    async def _fetch_lineups_with_retry(self, eid: int) -> dict[str, Any] | None:
+        """Fetch /event/{eid}/lineups, retrying until player ratings appear.
+
+        The lineups endpoint is lazy-loaded; a single early fetch frequently
+        returns empty or rating-less data. We re-fetch a few times, nudging the
+        Lineups tab between attempts to force the page to load the data.
+        """
+        url = {"lineups": f"{API_PAGE_BASE}/event/{eid}/lineups"}
+        lineups_raw: dict[str, Any] | None = None
+        for attempt in range(1, LINEUPS_RETRIES + 1):
+            fetched = await self._page_fetch_json(url)
+            candidate = fetched.get("lineups")
+            if candidate:
+                lineups_raw = candidate  # keep the best non-empty payload we saw
+            if self._lineups_have_ratings(lineups_raw):
+                if attempt > 1:
+                    logger.debug(f"Event {eid}: lineups recovered on attempt {attempt}")
+                return lineups_raw
+            # Not ready yet — open the Lineups tab and wait before retrying.
+            if attempt < LINEUPS_RETRIES:
+                await self._click_tab("Lineups", "Line-ups", "Escalações", "Lineup")
+                await self.page.wait_for_timeout(LINEUPS_RETRY_WAIT_MS)
+        if lineups_raw is None:
+            logger.warning(f"Event {eid}: lineups unavailable after {LINEUPS_RETRIES} attempts")
+        else:
+            logger.warning(f"Event {eid}: lineups present but without player ratings (source gap)")
+        return lineups_raw
 
     async def _fetch_event_details(self, event: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -322,12 +390,13 @@ class SofaScoreScraper:
                     break
                 await self.page.wait_for_timeout(500)
 
-            # The remaining endpoints are reliable via a same-origin page fetch
+            # event/incidents are reliable in one same-origin fetch; lineups
+            # (player stats) is flaky, so it gets its own retry loop.
             fetched = await self._page_fetch_json({
                 "event": f"{API_PAGE_BASE}/event/{eid}",
-                "lineups": f"{API_PAGE_BASE}/event/{eid}/lineups",
                 "incidents": f"{API_PAGE_BASE}/event/{eid}/incidents",
             })
+            lineups_raw = await self._fetch_lineups_with_retry(eid)
         finally:
             self.page.remove_listener("response", on_stats)
 
@@ -337,7 +406,7 @@ class SofaScoreScraper:
             "event_raw": fetched.get("event"),
             "stats_raw": stats_holder.get("data"),
             "incidents_raw": fetched.get("incidents"),
-            "lineups_raw": fetched.get("lineups"),
+            "lineups_raw": lineups_raw,
         }
 
     # ------------------------------------------------------------------

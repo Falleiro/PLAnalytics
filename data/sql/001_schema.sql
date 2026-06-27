@@ -112,23 +112,8 @@ create table if not exists public.match_stats (
 );
 
 -- ---------------------------------------------------------------------------
--- pipeline_runs: log opcional de execuções do scraper.
--- LEGADO: criada para a orquestração (Airflow + frontend), que saiu de escopo.
--- Mantida apenas como registro manual de execuções; pode ser removida.
--- ---------------------------------------------------------------------------
-create table if not exists public.pipeline_runs (
-  id          uuid primary key default gen_random_uuid(),
-  dag_id      text not null,
-  status      text check (status in ('running', 'success', 'failed', 'partial')),
-  started_at  timestamptz default now(),
-  finished_at timestamptz,
-  details     jsonb         -- sumário: total de partidas, erros, times processados
-);
-
--- ---------------------------------------------------------------------------
 -- Indexes para performance
 -- ---------------------------------------------------------------------------
 create index if not exists idx_matches_team_id    on public.matches(team_id);
 create index if not exists idx_matches_match_date on public.matches(match_date desc);
 create index if not exists idx_matches_event_id   on public.matches(sofascore_event_id);
-create index if not exists idx_pipeline_runs_dag  on public.pipeline_runs(dag_id, started_at desc);

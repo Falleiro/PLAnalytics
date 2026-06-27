@@ -6,15 +6,13 @@ Functions:
     upsert_teams(teams)      → insert/update teams table
     upsert_matches(matches)  → insert/update matches + match_stats + player_match_stats
     upload_raw_json(...)     → upload raw JSON to Storage bucket raw-data
-    log_pipeline_run(...)    → insert row in pipeline_runs (returns run_id)
-    update_pipeline_run(...) → update status/finished_at of an existing run
 """
 
 from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +92,8 @@ def upsert_matches(team_slug: str, matches: list[dict]) -> None:
             "away_team": m["away_team"],
             "score_home": m["score_home"],
             "score_away": m["score_away"],
+            "home_team_ranking": m.get("home_team_ranking"),
+            "away_team_ranking": m.get("away_team_ranking"),
             "competition": m["competition"],
             "season": m.get("season"),
             "round_number": m.get("round_number"),
@@ -200,48 +200,3 @@ def upload_raw_json(team_slug: str, scraped_at: datetime, content: bytes) -> Non
         path, content, {"upsert": "true", "content-type": "application/json"}
     )
     logger.info(f"Uploaded raw JSON → raw-data/{path}")
-
-
-# ---------------------------------------------------------------------------
-# Pipeline run log
-# ---------------------------------------------------------------------------
-
-def log_pipeline_run(
-    dag_id: str,
-    status: str,
-    details: dict | None = None,
-) -> str:
-    """
-    Insert a new row in public.pipeline_runs.
-
-    Returns the UUID of the created row (used to update it later).
-    """
-    client = get_client()
-    result = (
-        client.table("pipeline_runs")
-        .insert({
-            "dag_id": dag_id,
-            "status": status,
-            "started_at": datetime.now(tz=timezone.utc).isoformat(),
-            "details": details or {},
-        })
-        .execute()
-    )
-    run_id: str = result.data[0]["id"]
-    logger.info(f"Logged pipeline run — dag={dag_id} status={status} id={run_id}")
-    return run_id
-
-
-def update_pipeline_run(
-    run_id: str,
-    status: str,
-    details: dict | None = None,
-) -> None:
-    """Update status and finished_at of an existing pipeline_runs row."""
-    client = get_client()
-    client.table("pipeline_runs").update({
-        "status": status,
-        "finished_at": datetime.now(tz=timezone.utc).isoformat(),
-        "details": details or {},
-    }).eq("id", run_id).execute()
-    logger.info(f"Updated pipeline run {run_id} → {status}")

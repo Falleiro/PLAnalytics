@@ -31,6 +31,8 @@ MIGRATIONS = [
     "001_schema.sql",
     "002_rls_policies.sql",
     "004_player_stats.sql",
+    "005_match_stats_extend.sql",
+    "006_drop_pipeline_runs.sql",
 ]
 
 

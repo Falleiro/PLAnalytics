@@ -1,0 +1,8 @@
+# Fase 3 — Preparacao e Analise Estatistica dos Dados
+# Execucao do notebook 03_preparacao_e_analise.ipynb
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+seaborn>=0.13
+scipy>=1.11
+jupyter>=1.0
