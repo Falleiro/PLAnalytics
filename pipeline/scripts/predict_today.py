@@ -177,7 +177,7 @@ def main() -> None:
     print(f"{len(fixtures)} jogo(s) encontrado(s).")
 
     # 3) treina o modelo UMA vez
-    print("Treinando o melhor modelo (XGBoost calibrado) em toda a base...")
+    print("Treinando o melhor modelo (Random Forest calibrado) em toda a base...")
     df, tm, L, elo = build_training_table(df0)
     model, prep, le, cls = train_best_model(L)
 

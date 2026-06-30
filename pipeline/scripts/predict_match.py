@@ -4,7 +4,7 @@ World Cup Analytics — Previsão de um confronto futuro (probabilidades V/E/D)
 Replica a engenharia de features da Fase 4 (notebooks/04_modelagem.ipynb):
 forma recente N=10 (shift implícito = só passado), Elo dinâmico pré-jogo (mando
 zerado em campo neutro), ranking, descanso e Head-to-Head. Treina o melhor modelo
-(XGBoost calibrado) em TODA a base e prevê o confronto pedido.
+(Random Forest calibrado) em TODA a base e prevê o confronto pedido.
 
 Como a base é a saída da Fase 3, a previsão é PRÉ-JOGO: usa só o histórico das
 duas seleções (não precisa raspar a partida que ainda não aconteceu).
@@ -31,10 +31,10 @@ sys.path.insert(0, str(ROOT_DIR))
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from xgboost import XGBClassifier
 
 CSV_PATH = ROOT_DIR / "output" / "worldcup_dataset_clean.csv"
 ROLL = ["goals_for", "goals_against", "xg_for", "xg_against", "poss", "rating", "points", "win"]
@@ -189,7 +189,7 @@ def feature_row(tm, df, L, elo, team, opp, match_date, is_home, is_neutral, impo
 
 
 def train_best_model(L: pd.DataFrame):
-    """Treina o XGBoost calibrado em TODA a base. Retorna (model, prep, le, cls)."""
+    """Treina o Random Forest calibrado em TODA a base. Retorna (model, prep, le, cls)."""
     imputer = SimpleImputer(strategy="median").fit(L[FEATURES])
     scaler = StandardScaler().fit(imputer.transform(L[FEATURES]))
     def prep(X): return scaler.transform(imputer.transform(X))
@@ -203,9 +203,13 @@ def train_best_model(L: pd.DataFrame):
     # quebrando a calibração das probabilidades — que é o que esta previsão
     # entrega. Sem ele, P(empate) volta à taxa-base real e o log-loss melhora.
     sw = L["match_importance"].values.astype(float)
+    # Random Forest venceu a comparacao da Fase 4 (menor log-loss de teste E menor
+    # log-loss medio na CV temporal) DEPOIS de removermos o balanceamento de classe.
+    # Com 'balanced', o XGBoost liderava — mas inflava P(empate) e quebrava a
+    # calibracao; sem ele, o RF passou a frente. Ver notebooks/04_modelagem.ipynb.
     model = CalibratedClassifierCV(
-        XGBClassifier(n_estimators=300, max_depth=4, learning_rate=0.05, subsample=0.8,
-                      colsample_bytree=0.8, min_child_weight=5, random_state=42, verbosity=0),
+        RandomForestClassifier(n_estimators=300, max_depth=8, min_samples_leaf=5,
+                               random_state=42, n_jobs=-1),
         method="sigmoid", cv=TimeSeriesSplit(3))
     model.fit(X, y, sample_weight=sw)
     return model, prep, le, list(le.classes_)
