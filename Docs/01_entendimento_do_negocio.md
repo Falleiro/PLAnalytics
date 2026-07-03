@@ -177,7 +177,7 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
 | 3. Preparação dos Dados | Scraper adaptado para seleções; tabela de features de "forma recente" | ⬜ A fazer |
 | 4. Modelagem | Modelos de classificação (baseline → árvores/boosting), tuning | ⬜ A fazer |
 | 5. Avaliação | Comparação com baselines, calibração, importância de features | ⬜ A fazer |
-| 6. Implantação (Deployment) | **Planilha Excel** com os confrontos e previsões (probabilidades + resultado provável) | ⬜ A fazer |
+| 6. Implantação (Deployment) | **API REST** (`api/main.py`, ver [05_deployment.md](05_deployment.md)) + planilha Excel com os confrontos e previsões | 🟡 API em andamento |
 
 > **Nota de migração:** o scraper (Patchright) e o banco (Supabase/PostgreSQL) já
 > estão implementados na versão Premier League e serão **reaproveitados**. As

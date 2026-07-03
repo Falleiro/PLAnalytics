@@ -2,9 +2,11 @@
 World Cup Analytics — Previsão de um confronto futuro (probabilidades V/E/D)
 
 Replica a engenharia de features da Fase 4 (notebooks/04_modelagem.ipynb):
-forma recente N=10 (shift implícito = só passado), Elo dinâmico pré-jogo (mando
-zerado em campo neutro), ranking, descanso e Head-to-Head. Treina o melhor modelo
-(Random Forest calibrado) em TODA a base e prevê o confronto pedido.
+forma recente N=10 (shift implícito = só passado), Elo dinâmico pré-jogo
+(seed pelo ranking FIFA, K por importância, margem de vitória, mando zerado em
+campo neutro), ranking, descanso (clip 30d), Head-to-Head e features de
+equilíbrio (abs_*). Treina o melhor modelo (Random Forest calibrado) em TODA a
+base e prevê o confronto pedido.
 
 Como a base é a saída da Fase 3, a previsão é PRÉ-JOGO: usa só o histórico das
 duas seleções (não precisa raspar a partida que ainda não aconteceu).
@@ -39,7 +41,9 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 CSV_PATH = ROOT_DIR / "output" / "worldcup_dataset_clean.csv"
 ROLL = ["goals_for", "goals_against", "xg_for", "xg_against", "poss", "rating", "points", "win"]
 N = 10
-K, BASE, HADV_STD = 30, 1500.0, 40.0
+K_BASE, BASE, HADV_STD = 20, 1500.0, 40.0
+SEED_SLOPE, SEED_ANCHOR = 4.0, 75      # elo_0 = 1500 + 4*(75 - rank), clip [1000, 2000]
+REST_CAP = 30                          # descanso satura em ~1 mês (gaps = artefato da base)
 
 
 # ── contexto da competição (idêntico ao notebook) ────────────────────────────
@@ -77,9 +81,16 @@ def perspective(d: pd.DataFrame, side: str) -> pd.DataFrame:
 
 
 FEATURES = ([f"diff_form_{c}" for c in ROLL] +
-            ["elo_diff", "rank_diff", "rest_diff", "elo", "opp_elo",
+            ["abs_elo_diff", "abs_rank_diff", "abs_diff_form_points",
+             "elo_diff", "rank_diff", "rest_diff", "elo", "opp_elo",
              "is_home", "is_neutral", "match_importance",
              "h2h_winrate", "h2h_gf", "h2h_ga", "h2h_n"])
+
+
+def _mov_mult(gd: float) -> float:
+    """Margem de vitória: 1.0 (0-1 gol), 1.5 (2 gols), (11+|gd|)/8 (3+)."""
+    a = abs(gd)
+    return 1.0 if a <= 1 else (1.5 if a == 2 else (11 + a) / 8)
 
 
 def build_training_table(df: pd.DataFrame):
@@ -94,20 +105,36 @@ def build_training_table(df: pd.DataFrame):
     g = tm.groupby("team", group_keys=False)
     for c in ROLL:
         tm[f"form_{c}"] = g[c].apply(lambda s: s.shift(1).rolling(N, min_periods=1).mean())
-    tm["rest_days"] = g["date"].apply(lambda s: s.diff().dt.days)
+    tm["rest_days"] = g["date"].apply(lambda s: s.diff().dt.days).clip(upper=REST_CAP)
 
-    # Elo dinâmico pré-jogo (mando 0 em campo neutro)
+    # Elo dinâmico pré-jogo: seed pelo 1º ranking FIFA conhecido (194 times com
+    # mediana de ~7 jogos na base — sem seed o rating mal converge), K escalado
+    # pela importância (como a FIFA) e multiplicador de margem de vitória.
+    first_rank: dict[str, float] = {}
+    for r in df.itertuples():
+        for t, rk in ((r.home_team, r.home_team_ranking), (r.away_team, r.away_team_ranking)):
+            if t not in first_rank and pd.notna(rk):
+                first_rank[t] = rk
+
+    def seed_elo(team: str) -> float:
+        rk = first_rank.get(team)
+        if rk is None:
+            return BASE
+        return float(np.clip(BASE + SEED_SLOPE * (SEED_ANCHOR - rk), 1000.0, 2000.0))
+
     elo: dict[str, float] = {}
     ph, pa = [], []
     for r in df.itertuples():
         hadv = 0.0 if getattr(r, "is_neutral", 0) else HADV_STD
-        rh, ra = elo.get(r.home_team, BASE), elo.get(r.away_team, BASE)
+        rh = elo.get(r.home_team, seed_elo(r.home_team))
+        ra = elo.get(r.away_team, seed_elo(r.away_team))
         ph.append(rh); pa.append(ra)
         eh = 1 / (1 + 10 ** ((ra - (rh + hadv)) / 400))
         gd = r.score_home - r.score_away
         sh = 1.0 if gd > 0 else (0.5 if gd == 0 else 0.0)
-        elo[r.home_team] = rh + K * (sh - eh)
-        elo[r.away_team] = ra + K * ((1 - sh) - (1 - eh))
+        k = K_BASE * r.match_importance * _mov_mult(gd)
+        elo[r.home_team] = rh + k * (sh - eh)
+        elo[r.away_team] = ra + k * ((1 - sh) - (1 - eh))
     df["home_elo"], df["away_elo"] = ph, pa
 
     # ABT longa
@@ -139,6 +166,10 @@ def build_training_table(df: pd.DataFrame):
     L["elo_diff"] = L["elo"] - L["opp_elo"]
     L["rank_diff"] = L["opp_rank"] - L["team_rank"]
     L["rest_diff"] = L["rest_days"] - L["opp_rest_days"]
+    # equilíbrio: empate é mais provável entre times parelhos (função de |diff|)
+    L["abs_elo_diff"] = L["elo_diff"].abs()
+    L["abs_rank_diff"] = L["rank_diff"].abs()
+    L["abs_diff_form_points"] = L["diff_form_points"].abs()
 
     return df, tm, L, elo
 
@@ -178,12 +209,17 @@ def feature_row(tm, df, L, elo, team, opp, match_date, is_home, is_neutral, impo
     row = {f"diff_form_{c}": tf[c] - of[c] for c in ROLL}
     row["elo_diff"] = elo.get(team, BASE) - elo.get(opp, BASE)
     row["rank_diff"] = (rk_o - rk_t) if pd.notna(rk_t) and pd.notna(rk_o) else np.nan
-    row["rest_diff"] = (match_date - last_team).days - (match_date - last_opp).days
+    rest_t = min((match_date - last_team).days, REST_CAP)
+    rest_o = min((match_date - last_opp).days, REST_CAP)
+    row["rest_diff"] = rest_t - rest_o
     row["elo"] = elo.get(team, BASE)
     row["opp_elo"] = elo.get(opp, BASE)
     row["is_home"] = is_home
     row["is_neutral"] = is_neutral
     row["match_importance"] = importance
+    row["abs_elo_diff"] = abs(row["elo_diff"])
+    row["abs_rank_diff"] = abs(row["rank_diff"]) if pd.notna(row["rank_diff"]) else np.nan
+    row["abs_diff_form_points"] = abs(row["diff_form_points"])
     row.update(h2h_features(L, team, opp))
     return row
 
@@ -201,12 +237,11 @@ def train_best_model(L: pd.DataFrame):
     # minoritária (~21% da base), o "balanced" tratava os 3 resultados como
     # equiprováveis (~33% cada) e inflava o empate de ~21% para ~35% médio,
     # quebrando a calibração das probabilidades — que é o que esta previsão
-    # entrega. Sem ele, P(empate) volta à taxa-base real e o log-loss melhora.
+    # entrega. Decaimento por recência foi testado por ablação e não ajudou
+    # (a base cobre só 1 ciclo de Copa).
     sw = L["match_importance"].values.astype(float)
     # Random Forest venceu a comparacao da Fase 4 (menor log-loss de teste E menor
-    # log-loss medio na CV temporal) DEPOIS de removermos o balanceamento de classe.
-    # Com 'balanced', o XGBoost liderava — mas inflava P(empate) e quebrava a
-    # calibracao; sem ele, o RF passou a frente. Ver notebooks/04_modelagem.ipynb.
+    # log-loss medio na CV temporal). Ver notebooks/04_modelagem.ipynb.
     model = CalibratedClassifierCV(
         RandomForestClassifier(n_estimators=300, max_depth=8, min_samples_leaf=5,
                                random_state=42, n_jobs=-1),
@@ -219,8 +254,10 @@ def predict_one(model, prep, cls, tm, df, L, elo, home, away, match_date, compet
     """Probabilidades simetrizadas (V/E/D pela ótica do MANDANTE). Retorna (pV, pE, pD)."""
     importance = competition_weight(competition)
     neutral = is_neutral_venue(competition)
-    ih_home = 0 if neutral else 1   # campo neutro → sem vantagem de mando
-    row_h = feature_row(tm, df, L, elo, home, away, match_date, ih_home, neutral, importance)
+    # is_home NOMINAL (1/0), como no treino — em campo neutro o mandante nominal
+    # ainda carrega sinal (costuma ser o país-sede); zerá-lo criava divergência
+    # com o treino e piorou o log-loss na ablação da Fase 4.
+    row_h = feature_row(tm, df, L, elo, home, away, match_date, 1, neutral, importance)
     row_a = feature_row(tm, df, L, elo, away, home, match_date, 0, neutral, importance)
     p_h = model.predict_proba(prep(pd.DataFrame([row_h])[FEATURES]))[0]
     p_a = model.predict_proba(prep(pd.DataFrame([row_a])[FEATURES]))[0]
