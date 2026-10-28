@@ -18,7 +18,8 @@ de desempenho — e não apenas em opinião.
 Este projeto é um **trabalho de ciência de dados** de escopo enxuto e execução
 **manual** (sem orquestração automatizada): coleta de dados via scraping do
 SofaScore, armazenamento em Supabase/PostgreSQL, modelagem preditiva em notebooks
-de ML e **entrega final em uma planilha Excel** com as previsões dos confrontos.
+de ML e **entrega final via uma API REST** que serve as previsões dos confrontos
+sob demanda.
 
 ---
 
@@ -49,8 +50,9 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
 3. **Identificar os fatores** que mais influenciam o resultado (ex.: a posse de
    bola importa mais que o número de finalizações? o aproveitamento defensivo
    pesa mais que o ataque?).
-4. **Entregar as previsões** em uma planilha Excel organizada, com os confrontos,
-   as probabilidades de cada resultado e o resultado mais provável.
+4. **Entregar as previsões** por meio de uma API REST consultável sob demanda,
+   com os confrontos, as probabilidades de cada resultado e o resultado mais
+   provável.
 
 ### 1.3. Critérios de Sucesso de Negócio
 
@@ -61,7 +63,7 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
 - As previsões são **mais acertivas que o palpite ingênuo** (ex.: "sempre vence
   quem tem melhor ranking FIFA" ou "sempre vence o mandante").
 - Um usuário leigo consegue **entender a previsão e a confiança** associada em
-  menos de 30 segundos olhando a planilha de previsões.
+  menos de 30 segundos consultando a API (ex.: via Swagger).
 - O projeto é **reproduzível**: rodando os scripts/notebooks manualmente, a base é
   recoletada e as previsões são regeradas de forma consistente.
 
@@ -81,7 +83,7 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
   versão Premier League.
 - Banco **Supabase/PostgreSQL** para armazenar os dados coletados (carga manual).
 - **Notebooks Python** (pandas + scikit-learn) para EDA, features e modelagem.
-- **Excel** como formato de entrega final das previsões.
+- **API REST** (FastAPI) como formato de entrega final das previsões.
 
 > **Fora de escopo (intencionalmente):** este é um projeto enxuto e de execução
 > manual. Não há orquestração de pipeline (Airflow), agendamento/cron, dashboards
@@ -97,7 +99,7 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
 - A previsão deve sair **antes** do jogo (usar apenas dados disponíveis
   pré-partida — nada de "vazamento" de dados do próprio jogo a prever).
 - As etapas devem ser **reproduzíveis** rodando os scripts/notebooks manualmente,
-  com a saída final consolidada em **Excel**.
+  com a saída final servida por uma **API REST**.
 
 **Premissas**
 - O **desempenho recente** de uma seleção é um indicador razoável do seu
@@ -172,12 +174,12 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
 
 | Fase CRISP-DM | Entrega | Status |
 |---------------|---------|--------|
-| 1. Entendimento do Negócio | **Este documento** | 🟡 Em andamento |
-| 2. Entendimento dos Dados | Catálogo de dados do SofaScore, EDA inicial, qualidade dos dados | ⬜ A fazer |
-| 3. Preparação dos Dados | Scraper adaptado para seleções; tabela de features de "forma recente" | ⬜ A fazer |
-| 4. Modelagem | Modelos de classificação (baseline → árvores/boosting), tuning | ⬜ A fazer |
-| 5. Avaliação | Comparação com baselines, calibração, importância de features | ⬜ A fazer |
-| 6. Implantação (Deployment) | **API REST** (`api/main.py`, ver [05_deployment.md](05_deployment.md)) + planilha Excel com os confrontos e previsões | 🟡 API em andamento |
+| 1. Entendimento do Negócio | **Este documento** | ✅ Concluída |
+| 2. Entendimento dos Dados | EDA e qualidade dos dados — `notebooks/03_preparacao_e_analise.ipynb` (seções iniciais) | ✅ Concluída |
+| 3. Preparação dos Dados | Base única 1 linha/partida (`pipeline/scripts/build_dataset.py`, ver [02_agregacao_jogadores.md](02_agregacao_jogadores.md)); limpeza + features de forma leakage-safe — notebook 03 | ✅ Concluída |
+| 4. Modelagem | Baselines → Regressão Logística → Random Forest/XGBoost — `notebooks/04_modelagem.ipynb` | ✅ Concluída |
+| 5. Avaliação | Validação cruzada temporal, log-loss, calibração, comparação com baselines — notebook 04 | ✅ Concluída |
+| 6. Implantação (Deployment) | **API REST** (`api/main.py`, ver [05_deployment.md](05_deployment.md)) + CLI `pipeline/scripts/predict_match.py` | ✅ Concluída |
 
 > **Nota de migração:** o scraper (Patchright) e o banco (Supabase/PostgreSQL) já
 > estão implementados na versão Premier League e serão **reaproveitados**. As
@@ -195,4 +197,4 @@ de cada seleção. Não existe, para o torcedor comum, uma ferramenta acessível
   XGBoost/LightGBM para o modelo principal; calibração via `CalibratedClassifierCV`.
 - **Avaliação:** validação cruzada temporal, log-loss, matriz de confusão,
   feature importance (SHAP).
-- **Entrega:** exportação das previsões para **Excel** (`openpyxl`/`pandas.to_excel`).
+- **Entrega:** previsões servidas via **API REST** (FastAPI, `api/main.py`).

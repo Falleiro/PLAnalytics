@@ -12,7 +12,7 @@ Projeto **enxuto e de execução manual** (sem orquestração automatizada). Met
 **CRISP-DM** (documentação em `Docs/`).
 
 Pipeline (manual): SofaScore (scraping com Patchright) → Supabase (PostgreSQL) →
-notebooks Python (pandas + scikit-learn) → **planilha Excel com as previsões**.
+notebooks Python (pandas + scikit-learn) → **API REST com as previsões** (`api/`).
 
 > **Migração:** este projeto nasceu como "Premier League Analytics" (clubes da PL,
 > com Airflow + Power BI + portfólio Next.js). Foi repivotado para Copa do Mundo e
@@ -86,7 +86,7 @@ SofaScore → Patchright scraper → JSON em output/ (+ opcional: Supabase Stora
                                 → upsert (supabase_client) → Supabase PostgreSQL
                                               → notebooks (pandas/scikit-learn)
                                                   → ABT (1 linha por confronto)
-                                                  → modelo → previsões → Excel
+                                                  → modelo → previsões → API REST
 ```
 Cada etapa é executada **manualmente** sob demanda — não há agendamento/cron.
 
@@ -115,7 +115,7 @@ Cada etapa é executada **manualmente** sob demanda — não há agendamento/cro
 ## Key Python Dependencies
 `patchright` (fork não-detectável do Playwright), `pydantic`, `tenacity` (retry/
 backoff), `loguru` (logging), `supabase` (supabase-py), `pandas`, `scikit-learn`,
-`openpyxl` (export Excel), `asyncio`.
+`openpyxl` (export do dataset em Excel), `fastapi`/`uvicorn` (API REST), `asyncio`.
 
 ### Por que Patchright em vez de Playwright
 SofaScore detecta automação via `Runtime.enable` do CDP. Playwright expõe esse sinal;

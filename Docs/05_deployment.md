@@ -9,12 +9,10 @@
 
 ## 1. Decisão: previsão exposta via API REST
 
-A [Fase 1](01_entendimento_do_negocio.md) previa a entrega final das previsões em
-uma **planilha Excel**. Para permitir consumo programático (ex.: por um front-end,
-outro serviço, ou chamadas ad-hoc), o resultado da modelagem (Fase 4,
-`notebooks/04_modelagem.ipynb`) passou a ser exposto **também** via uma **API REST**
-local, em `api/main.py`, além de (não em substituição a) qualquer exportação Excel
-que venha a ser gerada manualmente a partir dos notebooks.
+Desde a [Fase 1](01_entendimento_do_negocio.md), a entrega final das previsões foi
+definida como uma **API REST**, para permitir consumo programático (por um
+front-end, outro serviço, ou chamadas ad-hoc). O resultado da modelagem (Fase 4,
+`notebooks/04_modelagem.ipynb`) é exposto localmente em `api/main.py`.
 
 A API reaproveita **exatamente** a mesma engenharia de features e o mesmo modelo
 (Random Forest calibrado) já usados pelo CLI `pipeline/scripts/predict_match.py` —

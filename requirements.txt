@@ -1,8 +1,38 @@
-# Fase 3 — Preparacao e Analise Estatistica dos Dados
-# Execucao do notebook 03_preparacao_e_analise.ipynb
-pandas>=2.0
-numpy>=1.24
-matplotlib>=3.7
-seaborn>=0.13
-scipy>=1.11
-jupyter>=1.0
+# World Cup Analytics — dependências completas (pip)
+# Instalação:  pip install -r requirements.txt
+# Alternativa com versões travadas (recomendada se tiver uv):  uv sync --group notebooks
+# Requer Python 3.12+
+
+# — núcleo: dados e modelagem —
+pandas>=3.0.1
+numpy>=1.26
+scikit-learn>=1.5.0
+xgboost>=3.3.0
+
+# — API REST (Fase de Implantação) —
+fastapi>=0.139.0
+uvicorn[standard]>=0.49.0
+requests>=2.32.5
+
+# — coleta (scraper SofaScore) e carga no Supabase —
+patchright>=1.60.1          # depois: patchright install chromium
+pydantic>=2.12.5
+tenacity>=9.1.4
+loguru>=0.7.3
+pyyaml>=6.0
+supabase>=2.28.2
+python-dotenv>=1.0.0
+
+# — notebooks (Fases 3–5) —
+jupyter>=1.0.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+scipy>=1.11.0
+
+# — exportação Excel —
+openpyxl>=3.1.0
+
+# — testes —
+pytest>=9.0.2
+pytest-asyncio>=1.3.0
+pytest-mock>=3.14.0

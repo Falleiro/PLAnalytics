@@ -8,4 +8,4 @@
 
 **Dados utilizados:** placar e resultado de cada partida, estatísticas por jogo (posse, finalizações, passes, duelos) e estatísticas individuais dos jogadores (rating, gols, xG, xA), estas agregadas por time.
 
-**Como trabalhamos:** scraping em Python → armazenamento em PostgreSQL → engenharia de features de forma recente → modelo de classificação (scikit-learn/XGBoost) → previsões exportadas em Excel, seguindo a metodologia CRISP-DM.
+**Como trabalhamos:** scraping em Python → armazenamento em PostgreSQL → engenharia de features de forma recente → modelo de classificação (scikit-learn/XGBoost) → previsões servidas via API REST, seguindo a metodologia CRISP-DM.

@@ -57,7 +57,7 @@ Pesquisamos como projetos acadêmicos e práticos resolvem isso. Conclusões:
    **média (qualidade geral) + máximo (craque) juntos**.
 4. **Estado da arte** (Graph Neural Nets que modelam cada jogador como nó) preserva
    o jogador individual sem agregar — porém é **overkill** para o escopo deste
-   projeto (Excel + scikit-learn/XGBoost).
+   projeto (API REST + scikit-learn/XGBoost).
 
 **Decisão:** manter a estrutura "agregar por `match_id` + `team_side`", mas usar
 **várias funções de agregação** (não só média), preservando o craque via `max` /
@@ -162,7 +162,7 @@ Estado da base gerada (jun/2026, `output/worldcup_dataset.xlsx`):
 - **1.138 partidas × 102 colunas** (1 linha por partida, **deduplicadas por evento**).
 - **984 (86,5%)** partidas têm agregados de jogadores completos (com rating).
 
-> **Extensão de features (jun/2026 — ver `Docs/03`):** após análise das tabelas + literatura,
+> **Extensão de features (jun/2026 — ver migration `data/sql/005_match_stats_extend.sql`):** após análise das tabelas + literatura,
 > o `MatchStats`/`Match` passaram a capturar o que o SofaScore fornecia e era descartado:
 > **xG/xGA de time** (`home/away_expected_goals`, 52% — só competições maiores), **ranking
 > tipo FIFA das duas seleções** (`home/away_team_ranking` + `rank_diff`, 97%), **estatísticas
